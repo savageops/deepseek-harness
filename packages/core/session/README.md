@@ -76,6 +76,10 @@ ctx.inject(['sessionEventTypes'], (scope) => {
 
 Registration is atomic, rejects collisions with first-party or already-owned types, and returns an idempotent disposer. The caller owns that disposer with its plugin effect. Unregistering a required type makes its stored sessions fail closed again; the core never silently drops an event it cannot interpret. Registration admits the durable type only — the plugin still owns its declaration-merged payload, projection, and event semantics.
 
+### Host and Client Context faces
+
+The package root owns the Host `Context.sessions` type (`SessionStore`). The Client Session Controller marks the Client plane, gives the root a `ClientSessionContext` face, and redeclares the Cordis property with its shared `ClientSessionContextService` alias (`ISessions`). Both declarations resolve to compatible Client types when a typecheck includes both project graphs, while each runtime still provides its own session service.
+
 -----
 
 <a id="understand-the-implementation"></a>

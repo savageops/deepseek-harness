@@ -3,6 +3,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-agent/types'
 import type { ConnectionHandle } from '@deepseek-ai/dsh-client-connection/client'
+import type { ISessions } from './contract/sessions.ts'
 import { createSessionControlStream } from './transport.ts'
 import { ClientSessions } from './sessions/service.ts'
 import type { SessionRemotes } from './sessions/remotes.ts'
@@ -49,6 +50,8 @@ export type {
   SubmissionHandle,
 } from './contract/session.ts'
 export type { ISessions } from './contract/sessions.ts'
+/** Shared client-side service face used by Cordis Context projection. */
+export type ClientSessionContextService = ISessions
 export { MutableSessionEventSource } from './contract/events.ts'
 export type {
   SessionEventChange,
@@ -68,10 +71,20 @@ export type {
 } from './contract/snapshot.ts'
 export type { ClientFailure, ClientResult } from './contract/result.ts'
 
+declare module '@deepseek-ai/dsh-session' {
+  /** Select the Client Session contract for Cordis Context in Client programs. */
+  interface SessionContextMode {
+    readonly plane: 'client'
+  }
+
+  /** Client Session object layer and Agent scope owner. */
+  interface ClientSessionContext extends ISessions {}
+}
+
 declare module '@deepseek-ai/cordis' {
   interface Context {
     /** Client Session object layer and Agent scope owner. */
-    sessions: import('./contract/sessions.ts').ISessions
+    sessions: ClientSessionContextService
   }
 }
 

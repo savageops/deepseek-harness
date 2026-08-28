@@ -36,9 +36,25 @@ export { canonicalHeader, foldRequestHeader, headerEquals } from './request-head
 export { KNOWN_SESSION_EVENT_TYPES } from './known-event-types.ts'
 export { SessionEventTypeRegistry } from './event-types.ts'
 
+/**
+ * Type-only plane marker used by the Client Session Controller augmentation.
+ * The Host root keeps the concrete SessionStore contract; the Client adds its
+ * own contract without redeclaring the same Cordis property with a conflicting
+ * type when both declaration graphs are present in one compiler program.
+ */
+export interface SessionContextMode {}
+
+/** Client-side replacement for the Host-only session service on a Client Context. */
+export interface ClientSessionContext {}
+
+/** Host `SessionStore` or the Client session contract selected by the active type plane. */
+export type ContextSessionService = SessionContextMode extends { readonly plane: 'client' }
+  ? ClientSessionContext
+  : SessionStore
+
 declare module '@deepseek-ai/cordis' {
   interface Context {
-    sessions: SessionStore
+    sessions: ContextSessionService
     /** Runtime admission registry for required event types owned by active plugins. */
     sessionEventTypes: SessionEventTypeRegistry
   }

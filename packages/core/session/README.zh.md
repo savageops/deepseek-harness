@@ -76,6 +76,10 @@ ctx.inject(['sessionEventTypes'], (scope) => {
 
 注册是原子的；与核心事件或已拥有事件的冲突会被拒绝，并返回可重复调用的 disposer。调用方通过插件 effect 拥有该 disposer。注销必需类型后，其存储会话会再次 fail closed；核心不会静默丢弃它无法解释的事件。注册只接纳持久化类型；payload 的声明合并、投影和事件语义仍由插件负责。
 
+### Host 与 Client 的 Context 面
+
+包根入口拥有 Host `Context.sessions` 类型（`SessionStore`）。Client Session Controller 标记 Client plane，让包根选择 `ClientSessionContext` 面，并使用共享的 `ClientSessionContextService` 别名（`ISessions`）重新声明 Cordis 属性。当一次类型检查同时包含 Host 与 Client 项目图时，两份声明会解析为兼容的 Client 类型；每个运行时仍提供自己的 session service。
+
 -----
 
 <a id="understand-the-implementation"></a>

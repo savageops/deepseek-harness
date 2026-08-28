@@ -29,6 +29,10 @@ ctx.inject(['sessionEventTypes'], (scope) => {
 
 The registration is atomic and effect-owned. Duplicate ownership and first-party names are rejected. The persistence reader accepts the external type only while that registration is active; once the owner unloads, the existing fail-closed refusal returns. Registration is admission, not interpretation: the plugin still owns the declaration-merged payload, projection, and event invariants. External types remain outside the generated [persistence log event catalog](../persistence-catalog.md).
 
+### Host and Client Context faces
+
+The package root owns the Host `Context.sessions` type (`SessionStore`). The Client Session Controller marks the Client plane, gives the root a `ClientSessionContext` face, and redeclares the Cordis property with its shared `ClientSessionContextService` alias (`ISessions`). Both declarations resolve to compatible Client types when a typecheck includes both project graphs, while each runtime still provides its own session service.
+
 ```ts type-equiv
 /** A user-role specialization of the one shared message representation. */
 interface UserMessage extends Message {

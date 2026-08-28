@@ -29,6 +29,10 @@ ctx.inject(['sessionEventTypes'], (scope) => {
 
 注册是原子的并由 effect 所有。重复所有权和核心事件名称都会被拒绝。持久化读取只在注册有效时接纳外部类型；所有者卸载后，原有的 fail-closed 拒绝会恢复。注册是接纳而非解释：payload 的声明合并、投影和事件不变式仍由插件负责。外部类型仍不进入生成的[持久化日志事件目录](../persistence-catalog.zh.md)。
 
+### Host 与 Client 的 Context 面
+
+包根入口拥有 Host `Context.sessions` 类型（`SessionStore`）。Client Session Controller 标记 Client plane，让包根选择 `ClientSessionContext` 面，并使用共享的 `ClientSessionContextService` 别名（`ISessions`）重新声明 Cordis 属性。当一次类型检查同时包含 Host 与 Client 项目图时，两份声明会解析为兼容的 Client 类型；每个运行时仍提供自己的 session service。
+
 ```ts type-equiv
 /** A user-role specialization of the one shared message representation. */
 interface UserMessage extends Message {
