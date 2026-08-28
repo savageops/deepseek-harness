@@ -218,9 +218,10 @@ export default defineConfig({
   },
   define: {
     ...clientBuildEnvironmentDefines(process.env),
-    // vendored loader internal.ts: fromInternal() probes the Node major —
-    // "0.0.0" takes neither branch, returning undefined (exactly the empty
-    // internal slot the shell boot fills with the client module loader).
+    // vendored loader internal.ts: fromInternal() keeps the Node major gate
+    // for browser safety, then detects the internal API by method shape —
+    // "0.0.0" returns undefined (exactly the empty internal slot the shell
+    // boot fills with the client module loader).
     'process.versions.node': '"0.0.0"',
     'process.execArgv': '[]',
     // vendored loader index.ts: envData falls to its default branch.

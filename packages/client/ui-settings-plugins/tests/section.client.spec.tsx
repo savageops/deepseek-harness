@@ -90,6 +90,7 @@ function renderSubagentModelSelection(state: Partial<SubagentModelSelectionCardS
   const store = createSnapshotStore<SubagentModelSelectionCardState>({
     ...settled,
     enabled: false,
+    defaultSelection: null,
     candidates: [],
     catalogStatus: 'idle',
     catalogPartial: false,
@@ -99,6 +100,8 @@ function renderSubagentModelSelection(state: Partial<SubagentModelSelectionCardS
   const actions = {
     toggleEnabled: vi.fn(),
     toggleModel: vi.fn(),
+    selectDefaultModel: vi.fn(),
+    selectDefaultEffort: vi.fn(),
     retryCatalog: vi.fn(),
     save: vi.fn(),
     discard: vi.fn(),
@@ -396,6 +399,49 @@ describe('SubagentModelSelectionCard', () => {
     fireEvent.click(screen.getByRole('checkbox', { name: /Deep/ }))
     expect(actions.toggleModel).toHaveBeenCalledWith('alpha\0fast')
     expect(actions.toggleModel).toHaveBeenCalledWith('alpha\0deep')
+  })
+
+  it('renders the provider-grouped default model and its catalog-owned effort choices', () => {
+    const actions = renderSubagentModelSelection({
+      enabled: true,
+      defaultSelection: { provider: 'alpha', model: 'fast', reasoningEffort: 'high' },
+      candidates: [
+        {
+          key: 'alpha\0fast',
+          provider: 'alpha',
+          model: 'fast',
+          providerName: 'Alpha API',
+          modelName: 'Fast',
+          available: true,
+          selected: false,
+          reasoning: {
+            efforts: [{ id: 'low', name: 'Low' }, { id: 'high', name: 'High' }],
+            defaultEffort: 'high',
+          },
+        },
+        {
+          key: 'beta\0deep',
+          provider: 'beta',
+          model: 'deep',
+          providerName: 'Beta API',
+          modelName: 'Deep',
+          available: true,
+          selected: false,
+        },
+      ],
+      catalogStatus: 'ready',
+    })
+    fireEvent.click(screen.getByText(en.subagentModelSelectionTitle))
+
+    const model = screen.getByLabelText(en.subagentModelSelectionDefault) as HTMLSelectElement
+    expect(model.value).toBe('alpha\0fast')
+    expect(screen.getByRole('option', { name: /Fast/ })).toBeTruthy()
+    fireEvent.change(model, { target: { value: 'beta\0deep' } })
+    expect(actions.selectDefaultModel).toHaveBeenCalledWith('beta\0deep')
+
+    const effort = screen.getByLabelText(en.subagentModelSelectionEffort) as HTMLSelectElement
+    fireEvent.change(effort, { target: { value: 'low' } })
+    expect(actions.selectDefaultEffort).toHaveBeenCalledWith('low')
   })
 
   it('renders directory progress, failures, unavailable routes, and validation', () => {

@@ -106,6 +106,62 @@ describe('dsh-tool-subagent model selection', () => {
     expect(result.isError).toBe(false)
     expect(starts).toBe(1)
   })
+
+  it('applies the Host default provider, model, and effort when a call omits route fields', async () => {
+    const requests: SubagentStartRequest[] = []
+    const ctx = await setup({
+      provider: 'mock',
+      withModelSelection: true,
+      defaultSelection: {
+        provider: 'alpha',
+        model: 'selected-model',
+        reasoningEffort: 'low',
+      },
+    }, { onStart: (request) => { requests.push(request) } })
+    ctx.llm.registerAdapter(['alpha'], new MockAdapter([], REASONING))
+    const parent = modelSelectionSetupAgent(ctx)
+    ;(parent as unknown as { options: Agent['options'] }).options = parentWithRoute().options
+
+    const result = await callSubagent(ctx, { description: 'default route', prompt: 'do it' })
+
+    expect(result.isError).toBe(false)
+    expect(requests[0]?.agentOptions).toEqual({
+      provider: 'alpha',
+      model: 'selected-model',
+      reasoningEffort: 'low',
+    })
+  })
+
+  it('lets an explicit per-call route and effort override the Host default', async () => {
+    const requests: SubagentStartRequest[] = []
+    const ctx = await setup({
+      provider: 'mock',
+      withModelSelection: true,
+      defaultSelection: {
+        provider: 'alpha',
+        model: 'selected-model',
+        reasoningEffort: 'high',
+      },
+    }, { onStart: (request) => { requests.push(request) } })
+    ctx.llm.registerAdapter(['alpha'], new MockAdapter([], REASONING))
+    const parent = modelSelectionSetupAgent(ctx)
+    ;(parent as unknown as { options: Agent['options'] }).options = parentWithRoute().options
+
+    const result = await callSubagent(ctx, {
+      description: 'override route',
+      prompt: 'do it',
+      provider: 'alpha',
+      model: 'child-model',
+      reasoning_effort: 'low',
+    })
+
+    expect(result.isError).toBe(false)
+    expect(requests[0]?.agentOptions).toEqual({
+      provider: 'alpha',
+      model: 'child-model',
+      reasoningEffort: 'low',
+    })
+  })
   it('exposes Session-authorized route fields and discovery when selection is enabled', async () => {
     const ctx = await setup({ provider: 'mock', withModelSelection: true })
     const agent = modelSelectionSetupAgent(ctx)

@@ -2956,7 +2956,10 @@ export interface Config {
   toolName?: string
   /**
    * Sample the Host `subagent-model-selection` user setting for each new
-   * top-level session and inherit that decision in its child sessions.
+   * top-level session and inherit that decision in its child sessions. An
+   * enabled `defaultSelection` is applied automatically to calls that omit
+   * route fields; an enabled `allowedModels` list additionally exposes the
+   * model-facing per-call route fields.
    */
   modelSelectionSettings?: boolean
   /**
@@ -3006,7 +3009,7 @@ export interface Config {
 
 Depends on: [`AgentOptions`](subsystems/core.md)
 
-Source: [`packages/subagent/tool-subagent/src/index.ts:49`](../packages/subagent/tool-subagent/src/index.ts)
+Source: [`packages/subagent/tool-subagent/src/index.ts:55`](../packages/subagent/tool-subagent/src/index.ts)
 
 <a id="deepseek-aidsh-tool-subagent-report"></a>
 

@@ -6,7 +6,10 @@ import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-sett
 import {
   AllowedModelRouteSchema,
   assertAllowedModelRoutes,
+  assertSubagentModelSelection,
+  SubagentModelSelectionSchema,
   type AllowedModelRoute,
+  type SubagentModelSelection,
 } from './model-selection.ts'
 
 declare module '@deepseek-ai/cordis' {
@@ -23,6 +26,8 @@ export const SUBAGENT_MODEL_SELECTION_SETTINGS_NAMESPACE = settingsNamespace('su
 export interface SubagentModelSelectionSettings {
   /** Whether newly composed top-level Sessions receive model selection. */
   enabled: boolean
+  /** Automatic child route applied when a delegation call does not choose one. */
+  defaultSelection?: SubagentModelSelection
   /** Exact child LLM routes offered to newly composed top-level Sessions. */
   allowedModels: AllowedModelRoute[]
 }
@@ -30,6 +35,8 @@ export interface SubagentModelSelectionSettings {
 /** Schema served to settings clients for the opt-in preference. */
 export const SUBAGENT_MODEL_SELECTION_SETTINGS_SCHEMA: z<SubagentModelSelectionSettings> = z.object({
   enabled: z.boolean().default(false),
+  // Prevent Schemastery from materializing an omitted nested route as `{}`.
+  defaultSelection: SubagentModelSelectionSchema.default(undefined as unknown as SubagentModelSelection),
   allowedModels: z.array(AllowedModelRouteSchema).default([]),
 })
 
@@ -37,6 +44,8 @@ export const SUBAGENT_MODEL_SELECTION_SETTINGS_SCHEMA: z<SubagentModelSelectionS
 export interface Config {
   /** Initial enabled state inherited when the user document does not override it. */
   enabled?: boolean
+  /** Initial automatic child route inherited when the user document does not override it. */
+  defaultSelection?: SubagentModelSelection
   /** Initial route list inherited when the user document does not override it. */
   allowedModels?: AllowedModelRoute[]
 }
@@ -45,6 +54,8 @@ export interface Config {
 export class SubagentModelSelectionConfig extends Service {
   static Config: z<Config> = z.object({
     enabled: z.boolean().default(false),
+    // Prevent Schemastery from materializing an omitted nested route as `{}`.
+    defaultSelection: SubagentModelSelectionSchema.default(undefined as unknown as SubagentModelSelection),
     allowedModels: z.array(AllowedModelRouteSchema).default([]),
   })
 
@@ -56,6 +67,15 @@ export class SubagentModelSelectionConfig extends Service {
     /* v8 ignore next */
     const entry: SubagentModelSelectionSettings = {
       enabled: config.enabled ?? false,
+      ...config.defaultSelection === undefined ? {} : {
+        defaultSelection: {
+          provider: config.defaultSelection.provider,
+          model: config.defaultSelection.model,
+          ...config.defaultSelection.reasoningEffort === undefined
+            ? {}
+            : { reasoningEffort: config.defaultSelection.reasoningEffort },
+        },
+      },
       allowedModels: config.allowedModels ?? [],
     }
     this.validate(entry)
@@ -77,20 +97,30 @@ export class SubagentModelSelectionConfig extends Service {
 
   /**
    * Read a detached selection preference for the next eligible Agent publication.
-   * @returns the enabled state and exact allowed routes.
+   * @returns the enabled state, automatic child route, and exact allowed routes.
    */
   current(): SubagentModelSelectionSettings {
     const current = this.source()
     return {
       enabled: current.enabled,
+      ...current.defaultSelection === undefined ? {} : {
+        defaultSelection: {
+          provider: current.defaultSelection.provider,
+          model: current.defaultSelection.model,
+          ...current.defaultSelection.reasoningEffort === undefined
+            ? {}
+            : { reasoningEffort: current.defaultSelection.reasoningEffort },
+        },
+      },
       allowedModels: current.allowedModels.map(route => ({ ...route })),
     }
   }
 
   private validate(value: SubagentModelSelectionSettings): void {
     assertAllowedModelRoutes(value.allowedModels)
-    if (value.enabled && value.allowedModels.length === 0) {
-      throw new Error('enabled subagent model selection requires at least one allowed model')
+    if (value.defaultSelection !== undefined) assertSubagentModelSelection(value.defaultSelection)
+    if (value.enabled && value.defaultSelection === undefined && value.allowedModels.length === 0) {
+      throw new Error('enabled subagent model selection requires at least one allowed model or a default model')
     }
   }
 }

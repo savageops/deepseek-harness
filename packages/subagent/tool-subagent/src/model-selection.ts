@@ -19,6 +19,43 @@ export const AllowedModelRouteSchema: z<AllowedModelRoute> = z.object({
   model: z.string().min(1).required(),
 })
 
+/** One default child LLM route with the optional adapter-owned effort. */
+export interface SubagentModelSelection extends AllowedModelRoute {
+  /** Exact reasoning effort; omission keeps the selected model's provider default. */
+  readonly reasoningEffort?: string
+}
+
+/** Schema for the automatic child route stored by the Host setting. */
+export const SubagentModelSelectionSchema: z<SubagentModelSelection> = z.object({
+  provider: z.string().min(1).required(),
+  model: z.string().min(1).required(),
+  reasoningEffort: z.string().min(1),
+})
+
+/** Validate one persisted or configured automatic child route. */
+export function assertSubagentModelSelection(value: unknown): asserts value is SubagentModelSelection {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)
+    || !('provider' in value) || !('model' in value)) {
+    throw new Error('subagent model selection requires a provider and model')
+  }
+  assertAllowedModelRoutes([{ provider: value.provider, model: value.model }])
+  if ('reasoningEffort' in value && value.reasoningEffort !== undefined
+    && (typeof value.reasoningEffort !== 'string' || value.reasoningEffort.length === 0)) {
+    throw new Error('subagent model selection requires a non-empty reasoning effort')
+  }
+}
+
+/** Convert a stored automatic route into the Agent option shape used at creation. */
+export function agentOptionsForSubagentSelection(selection: SubagentModelSelection): AgentOptions {
+  return {
+    provider: selection.provider,
+    model: selection.model,
+    ...selection.reasoningEffort === undefined
+      ? {}
+      : { reasoningEffort: ReasoningEffortId(selection.reasoningEffort) },
+  }
+}
+
 /** Route-selection authority captured by one delegation definition. */
 export interface ModelSelectionPolicy {
   /** Exact provider/model routes authorized for explicit selection. */

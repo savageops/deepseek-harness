@@ -127,9 +127,9 @@
     backgroundMode: continuable
     maxDepth: 1
 
-# Fork omits model selection so provider/model stay equal to the parent and the
-# inherited history remains eligible for KV Cache reuse. It stays one-shot because
-# a continuable child's `report` tool and prompt section precede that history and
+# Fork stays on the parent route in this fixed headless fixture, so the inherited
+# history remains eligible for KV Cache reuse. It stays one-shot because a
+# continuable child's `report` tool and prompt section precede that history and
 # invalidate the same prefix. `run_in_background` is off as an explicit
 # foreground-only choice even though agent-spine-demo mounts the generic Job runtime.
 # See .agents/notes/implemented/feature/2026-08-18-model-selected-subagent-routes.md

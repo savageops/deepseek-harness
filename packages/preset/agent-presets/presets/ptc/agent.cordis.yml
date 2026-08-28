@@ -192,16 +192,17 @@
         modelSelectionSettings: true
         backgroundMode: continuable
 
-    # Fork omits model selection so provider/model stay equal to the parent and
-    # the inherited history remains eligible for KV Cache reuse. This preset
-    # keeps fork continuable and accepts its child-scoped `report` additions invalidating
-    # that prefix; issue #2124 tracks cache-preserving continuable fork.
+    # Fork samples the Host default route at Agent publication. A route that
+    # differs from the parent can prevent provider-side KV Cache reuse for the
+    # copied prefix; the child remains continuable and accepts child-scoped
+    # `report` additions. Issue #2124 tracks cache-preserving continuable fork.
     - id: tool-subagent-fork
       name: '@deepseek-ai/dsh-tool-subagent'
       config:
         provider: fork
         toolName: subagent_fork
         backgroundMode: continuable
+        modelSelectionSettings: true
 
     # Production dsh does not install these optional providers. Install the
     # matching Bundle in this Profile and restart the Host, then copy this

@@ -34,7 +34,7 @@
           - img
       - listitem:
         - 'button "展开设置: Subagent"':
-          - text: Subagent 控制 Agent 为 Subagent 选择模型的权限。
+          - text: Subagent 选择 Subagent 使用的模型和推理强度。
           - img
       - listitem:
         - 'button "展开设置: 网页搜索"':

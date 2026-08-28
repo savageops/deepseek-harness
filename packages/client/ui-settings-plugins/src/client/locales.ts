@@ -12,7 +12,9 @@ export type PluginsSettingsLocaleKey =
   | 'webSearchApiKey' | 'webSearchApiKeyHint' | 'webSearchApiKeySet' | 'webSearchApiKeyUnset'
   | 'webSearchBaseUrl' | 'webSearchBaseUrlHint' | 'webSearchMaxUses' | 'webSearchMaxUsesHint'
   | 'subagentModelSelectionTitle' | 'subagentModelSelectionDescription'
-  | 'subagentModelSelectionToggle' | 'subagentModelSelectionChoose' | 'subagentModelSelectionAllowed'
+  | 'subagentModelSelectionToggle' | 'subagentModelSelectionChoose' | 'subagentModelSelectionDefault'
+  | 'subagentModelSelectionUseParent' | 'subagentModelSelectionEffort'
+  | 'subagentModelSelectionProviderDefault' | 'subagentModelSelectionAllowed'
   | 'subagentModelSelectionLoading' | 'subagentModelSelectionLoadFailed' | 'subagentModelSelectionRetry'
   | 'subagentModelSelectionPartial' | 'subagentModelSelectionUnavailable'
   | 'subagentModelSelectionUnavailableGroup' | 'subagentModelSelectionEmpty'
@@ -58,10 +60,14 @@ export const en: Record<PluginsSettingsLocaleKey, string> = {
   webSearchMaxUses: 'Max searches per request',
   webSearchMaxUsesHint: 'How many times one request may search before it must answer.',
   subagentModelSelectionTitle: 'Subagent',
-  subagentModelSelectionDescription: 'Control which models agents may choose for subagents.',
-  subagentModelSelectionToggle: 'Allow agents to choose models for subagents',
-  subagentModelSelectionChoose: 'When enabled, agents can choose a provider, model, and reasoning effort for each subagent from the authorized models below. Applies only to new sessions.',
-  subagentModelSelectionAllowed: 'Models agents may choose',
+  subagentModelSelectionDescription: 'Choose the model and reasoning effort used by subagents.',
+  subagentModelSelectionToggle: 'Use a dedicated model for subagents',
+  subagentModelSelectionChoose: 'When enabled, new subagents use the selected provider, model, and reasoning effort. Optional per-call model choices remain separately authorized. Applies only to new sessions.',
+  subagentModelSelectionDefault: 'Default subagent model',
+  subagentModelSelectionUseParent: 'Inherit the parent agent model',
+  subagentModelSelectionEffort: 'Default reasoning effort',
+  subagentModelSelectionProviderDefault: 'Provider default',
+  subagentModelSelectionAllowed: 'Models agents may choose per call',
   subagentModelSelectionLoading: 'Loading models…',
   subagentModelSelectionLoadFailed: 'Models could not be loaded.',
   subagentModelSelectionRetry: 'Retry',
@@ -69,9 +75,9 @@ export const en: Record<PluginsSettingsLocaleKey, string> = {
   subagentModelSelectionUnavailable: 'Currently unavailable',
   subagentModelSelectionUnavailableGroup: 'Saved but currently unavailable',
   subagentModelSelectionEmpty: 'No model provider currently advertises a model.',
-  subagentModelSelectionRequired: 'Select at least one model before saving.',
+  subagentModelSelectionRequired: 'Choose a default model or at least one allowed model before saving.',
   subagentModelSelectionConflict: 'Settings changed elsewhere. Discard your draft and try again.',
-  subagentModelSelectionOff: 'Subagents use configured defaults or inherit the parent agent\'s model. Saved model choices are retained.',
+  subagentModelSelectionOff: 'Subagents inherit the parent agent model. The saved default and per-call choices are retained.',
 }
 
 /** Simplified Chinese copy. */
@@ -114,10 +120,14 @@ export const zh: Record<PluginsSettingsLocaleKey, string> = {
   webSearchMaxUses: '单次请求最多搜索次数',
   webSearchMaxUsesHint: '一次请求在必须作答前最多可以搜索多少次。',
   subagentModelSelectionTitle: 'Subagent',
-  subagentModelSelectionDescription: '控制 Agent 为 Subagent 选择模型的权限。',
-  subagentModelSelectionToggle: '允许 Agent 为 Subagent 选择模型',
-  subagentModelSelectionChoose: '开启后，Agent 可以从下方授权模型中，为每个 Subagent 选择提供方、模型和推理强度。仅影响新会话。',
-  subagentModelSelectionAllowed: 'Agent 可选择的模型',
+  subagentModelSelectionDescription: '选择 Subagent 使用的模型和推理强度。',
+  subagentModelSelectionToggle: '为 Subagent 使用专用模型',
+  subagentModelSelectionChoose: '开启后，新建 Subagent 使用所选提供方、模型和推理强度。每次调用的可选模型仍单独授权。仅影响新会话。',
+  subagentModelSelectionDefault: 'Subagent 默认模型',
+  subagentModelSelectionUseParent: '继承父 Agent 模型',
+  subagentModelSelectionEffort: '默认推理强度',
+  subagentModelSelectionProviderDefault: '提供方默认值',
+  subagentModelSelectionAllowed: 'Agent 可按次选择的模型',
   subagentModelSelectionLoading: '正在加载模型…',
   subagentModelSelectionLoadFailed: '无法加载模型。',
   subagentModelSelectionRetry: '重试',
@@ -125,7 +135,7 @@ export const zh: Record<PluginsSettingsLocaleKey, string> = {
   subagentModelSelectionUnavailable: '当前不可用',
   subagentModelSelectionUnavailableGroup: '已保存但当前不可用',
   subagentModelSelectionEmpty: '当前没有模型提供方公布模型。',
-  subagentModelSelectionRequired: '保存前请至少选择一个模型。',
+  subagentModelSelectionRequired: '保存前请选择默认模型或至少一个可选模型。',
   subagentModelSelectionConflict: '设置已在其他位置更新。请放弃修改后重试。',
-  subagentModelSelectionOff: '关闭后，Subagent 使用配置的默认模型或继承父 Agent 的模型；已选模型会保留。',
+  subagentModelSelectionOff: '关闭后，Subagent 继承父 Agent 模型；已保存的默认模型和按次选项会保留。',
 }

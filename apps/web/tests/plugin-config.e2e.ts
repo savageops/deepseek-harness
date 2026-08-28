@@ -90,15 +90,19 @@ describe('web e2e: plugin configuration section', () => {
     expect(tripwire.pageErrors).toEqual([])
   }, 60_000)
 
-  it('persists selected adapter routes as the subagent model allowlist', async () => {
+  it('persists the default subagent route and selected per-call model routes', async () => {
     onTestFailed(() => saveFailureShot(page, 'web-e2e-plugin-config-subagent-model-selection'))
     const dialog = await openPlugins()
     await dialog.getByText('Subagent', { exact: true }).click()
-    const toggle = dialog.getByRole('switch', { name: '允许 Agent 为 Subagent 选择模型' })
+    const toggle = dialog.getByRole('switch', { name: '为 Subagent 使用专用模型' })
 
     await toggle.click()
-    const models = dialog.getByRole('group', { name: 'Agent 可选择的模型' })
+    const models = dialog.getByRole('group', { name: 'Agent 可按次选择的模型' })
     await models.waitFor({ timeout: 10_000 })
+    const defaultModel = dialog.getByLabel('Subagent 默认模型', { exact: true })
+    await expect.poll(() => defaultModel.locator('option').count(), { timeout: 10_000 }).toBeGreaterThan(1)
+    await defaultModel.selectOption({ index: 1 })
+    expect(await defaultModel.inputValue()).not.toBe('')
     const firstModel = models.getByRole('checkbox').first()
     await firstModel.check()
     await dialog.getByRole('button', { name: '保存', exact: true }).click()
@@ -109,6 +113,7 @@ describe('web e2e: plugin configuration section', () => {
       .toBe(true)
     expect(await settingsDocument()).toContain('enabled: true')
     expect(await settingsDocument()).toContain('allowedModels:')
+    expect(await settingsDocument()).toContain('defaultSelection:')
     expect(await settingsDocument()).toContain('provider:')
     expect(await settingsDocument()).toContain('model:')
     await expandSubagent.click()
@@ -122,6 +127,7 @@ describe('web e2e: plugin configuration section', () => {
     await expect.poll(async () => (await settingsDocument()).includes('enabled: false'), { timeout: 10_000 })
       .toBe(true)
     expect(await settingsDocument()).toContain('allowedModels:')
+    expect(await settingsDocument()).toContain('defaultSelection:')
     expect(await settingsDocument()).toContain('provider:')
     expect(await settingsDocument()).toContain('model:')
     await expandSubagent.click()
@@ -137,7 +143,7 @@ describe('web e2e: plugin configuration section', () => {
     const timeout = dialog.getByLabel('命令超时（毫秒）')
     await timeout.waitFor({ timeout: 10_000 })
     // The composed default this deployment ships, before any user layer.
-    expect(await timeout.inputValue()).toBe('60000')
+    expect(await timeout.inputValue()).toBe('120000')
     await timeout.fill('12000')
     await timeout.blur()
 
@@ -204,7 +210,7 @@ describe('web e2e: plugin configuration section', () => {
     // The reset stages the composed default; the document still carries the
     // override until the save lands.
     await dialog.getByRole('button', { name: '恢复默认' }).click()
-    await expect.poll(() => timeout.inputValue(), { timeout: 5_000 }).toBe('60000')
+    await expect.poll(() => timeout.inputValue(), { timeout: 5_000 }).toBe('120000')
     expect(await settingsDocument()).toContain('timeoutMs: 12000')
 
     await dialog.getByRole('button', { name: '保存', exact: true }).click()
@@ -214,7 +220,7 @@ describe('web e2e: plugin configuration section', () => {
     const expandTerminal = dialog.getByRole('button', { name: '展开设置: 终端' })
     await expandTerminal.waitFor({ timeout: 5_000 })
     await expandTerminal.click()
-    expect(await timeout.inputValue()).toBe('60000')
+    expect(await timeout.inputValue()).toBe('120000')
     expect(await dialog.getByText('已覆盖').count()).toBe(0)
     expect(tripwire.pageErrors).toEqual([])
   }, 60_000)

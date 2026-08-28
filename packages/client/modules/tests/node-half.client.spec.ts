@@ -8,6 +8,7 @@ import { dirname, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { runInNewContext } from 'node:vm'
 import { Context, type Fiber } from '@deepseek-ai/cordis'
+import { ModuleLoader } from '@deepseek-ai/cordis-plugin-loader'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { renderIndexInjections, type WebServer, type WebRoute } from '@deepseek-ai/dsh-host-webserver'
 import * as modulesClient from '../src/client/index.ts'
@@ -22,6 +23,26 @@ const comboUrl = (ids: readonly string[], rev: string): string =>
 const mapUrl = (url: string): string => url.replace(/\/client\.js(?=,|&rev=)/g, '/client.js.map')
 const BOOTSTRAP_URL = comboUrl([MODULES_ID], 'boot')
 const APPLICATION_URL = comboUrl([UI_RENDERER_ID], 'app')
+
+describe('Node internal loader detection', () => {
+  it('classifies the resolver from the methods exposed by Node', () => {
+    const loader = ModuleLoader.fromInternal()
+    if (loader === undefined) return
+
+    const raw = loader as unknown as {
+      getOrCreateModuleJob?: unknown
+      getModuleJobForImport?: unknown
+    }
+    const expected = typeof raw.getOrCreateModuleJob === 'function'
+      ? 'v2'
+      : typeof raw.getModuleJobForImport === 'function'
+        ? 'v1'
+        : undefined
+
+    expect(expected).toBeDefined()
+    expect(loader.version).toBe(expected)
+  })
+})
 
 let root: string | undefined
 

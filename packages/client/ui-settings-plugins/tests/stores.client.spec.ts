@@ -483,6 +483,44 @@ describe('SubagentModelSelectionCardController', () => {
     })
   })
 
+  it('stages and saves the automatic model route and effort separately from the allowlist', async () => {
+    const host = stubSettingsScope<SubagentModelSelectionSettings>()
+    acceptWrites(host)
+    const models = modelsApi({
+      groups: [{ id: 'alpha', name: 'Alpha API', models: [{ id: 'fast', name: 'Fast' }] }],
+    })
+    const controller = new SubagentModelSelectionCardController(host.scope, models.api)
+    host.publish({
+      status: 'ready', writable: true, revision: 3,
+      value: { enabled: false, allowedModels: [] }, user: {},
+    })
+    const face = controller.inject()
+
+    face.toggleEnabled()
+    await vi.waitFor(() => {
+      expect(face.hooks.subagentModelSelectionCard.getSnapshot().candidates).toHaveLength(1)
+    })
+    face.selectDefaultModel('alpha\0fast')
+    face.selectDefaultEffort('high')
+    face.save()
+    await vi.waitFor(() => {
+      expect(host.mutate).toHaveBeenCalledWith([
+        { op: 'set', path: ['enabled'], value: true },
+        { op: 'set', path: ['allowedModels'], value: [] },
+        {
+          op: 'set', path: ['defaultSelection'],
+          value: { provider: 'alpha', model: 'fast', reasoningEffort: 'high' },
+        },
+      ], 3)
+    })
+    expect(face.hooks.subagentModelSelectionCard.getSnapshot()).toMatchObject({
+      enabled: true,
+      defaultSelection: { provider: 'alpha', model: 'fast', reasoningEffort: 'high' },
+      invalid: false,
+      dirty: false,
+    })
+  })
+
   it('starts an empty draft when a ready test scope has no decoded value', () => {
     const host = stubSettingsScope<SubagentModelSelectionSettings>()
     const controller = new SubagentModelSelectionCardController(host.scope, modelsApi().api)

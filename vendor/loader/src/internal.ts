@@ -45,7 +45,7 @@ export interface ModuleJob {
 }
 
 /**
- * Node 22/23 ModuleLoader interface.
+ * Legacy Node internal ModuleLoader interface.
  *
  * Key methods:
  * - getModuleJobForImport(specifier, parentURL, importAttributes)
@@ -63,7 +63,7 @@ export interface ModuleLoaderV1 {
   load(specifier: string, context: Pick<LoadHookContext, 'format' | 'importAttributes'>): Promise<LoadResult>
 }
 
-/** Node 24+ module request object. */
+/** Request-object Node internal module request. */
 export interface ModuleRequest {
   specifier: string
   attributes?: ImportAttributes
@@ -80,7 +80,7 @@ export const enum ModulePhase {
 export type ModuleRequestType = unknown // internal symbols
 
 /**
- * Node 24+ ModuleLoader interface.
+ * Request-object Node internal ModuleLoader interface.
  *
  * Breaking changes from v1:
  * - getModuleJobForImport removed → getOrCreateModuleJob(parentURL, request, requestType)
@@ -119,14 +119,22 @@ export namespace ModuleLoader {
 
   export function fromInternal(): ModuleLoader | undefined {
     if (_cachedLoader) return _cachedLoader
-    const [major] = process.versions.node.split('.').map(Number)
+    // Keep the major gate because the browser build aliases node:module and
+    // deliberately advertises 0.0.0. Within supported Node releases, the
+    // internal API shape is the source of truth: release majors do not
+    // reliably identify which resolver signature the runtime exposes.
+    const major = Number.parseInt(process.versions.node, 10)
+    if (!Number.isFinite(major) || major < 22) return
 
-    if (major >= 24) {
-      const raw = requireInternal('internal/modules/esm/loader')?.getOrInitializeCascadedLoader()
-      if (raw) return _cachedLoader = Object.assign(raw, { version: 'v2' })
-    } else if (major >= 22) {
-      const raw = requireInternal('internal/modules/esm/loader')?.getOrInitializeCascadedLoader()
-      if (raw) return _cachedLoader = Object.assign(raw, { version: 'v1' })
-    }
+    const raw = requireInternal('internal/modules/esm/loader')?.getOrInitializeCascadedLoader()
+    if (!raw) return
+
+    const version = typeof raw.getOrCreateModuleJob === 'function'
+      ? 'v2'
+      : typeof raw.getModuleJobForImport === 'function'
+        ? 'v1'
+        : undefined
+    if (version === undefined) return
+    return _cachedLoader = Object.assign(raw, { version })
   }
 }

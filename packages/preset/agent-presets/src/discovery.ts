@@ -138,11 +138,10 @@ function packageInstalled(name: string, base: string): boolean {
  * resolve from THIS module rather than from the harness — reporting a
  * dependency visible only to this package as healthy, and a plugin the mount
  * can import as broken. The resolver that does honour an explicit parent is
- * the Loader's internal one, whose `resolveSync` signature differs between
- * Node 22 and 24 (`ModuleLoader.fromInternal` tags the raw object rather than
- * normalising it); reaching into that for a case the walk already covers buys
- * nothing a supported deployment needs, because every plugin a preset names
- * is installed beside the roster.
+ * the Loader's internal one, whose `resolveSync` signature varies by the
+ * method shape exposed by the supported Node release; reaching into that for
+ * a case the walk already covers buys nothing a supported deployment needs,
+ * because every plugin a preset names is installed beside the roster.
  *
  * What that gives up: a package resolvable ONLY through a loader hook — an
  * import map, or a tree with no `node_modules` at all — is reported broken.

@@ -510,7 +510,7 @@ Singleton settings owner read by delegation tools when an Agent is published.
 ```ts cordis-catalog
 /**
  * Read a detached selection preference for the next eligible Agent publication.
- * @returns the enabled state and exact allowed routes.
+ * @returns the enabled state, automatic child route, and exact allowed routes.
  */
 current(): SubagentModelSelectionSettings
 ```

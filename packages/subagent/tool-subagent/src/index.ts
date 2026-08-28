@@ -26,16 +26,22 @@ import type { JobOutcome } from '@deepseek-ai/dsh-jobs'
 import { FIRST_PARTY_SECTION_ORDER } from '@deepseek-ai/dsh-system-prompt'
 import {
   assertAllowedModelSelection,
+  agentOptionsForSubagentSelection,
   hasConfiguredLlmSelection,
   hasDelegationModelRequest,
   preflightChildLlmRoute,
   requestedAgentOptions,
 } from './model-selection.ts'
-import type { DelegationModelRequest, ModelSelectionPolicy } from './model-selection.ts'
+import type {
+  DelegationModelRequest,
+  ModelSelectionPolicy,
+} from './model-selection.ts'
 import { registerListSubagentModels } from './list-models.ts'
 import type {} from './model-selection-settings.ts'
 import {
   recordSubagentModelSelection,
+  recordSubagentModelSelectionDefault,
+  subagentModelSelectionDefault,
   subagentModelSelectionPolicy,
 } from './model-selection-state.ts'
 
@@ -56,7 +62,10 @@ export interface Config {
   toolName?: string
   /**
    * Sample the Host `subagent-model-selection` user setting for each new
-   * top-level session and inherit that decision in its child sessions.
+   * top-level session and inherit that decision in its child sessions. An
+   * enabled `defaultSelection` is applied automatically to calls that omit
+   * route fields; an enabled `allowedModels` list additionally exposes the
+   * model-facing per-call route fields.
    */
   modelSelectionSettings?: boolean
   /**
@@ -284,6 +293,14 @@ interface DelegationRunSpec {
   readonly runInBackground: boolean
 }
 
+/** Durable model-selection inputs sampled by one Agent-owned tool definition. */
+interface AgentModelSelection {
+  /** Optional model-facing allowlist for explicit per-call choices. */
+  readonly policy?: ModelSelectionPolicy
+  /** Optional automatic child route for calls without an explicit choice. */
+  readonly defaultSelection?: AgentOptions
+}
+
 /** Resolve the model's optional scheduling request into one execution route. */
 function resolveDelegationRun(
   request: DelegationRunRequest,
@@ -351,7 +368,8 @@ export function apply(ctx: Context, config: Config): void {
   const initialProvider = ctx.subagents.getProvider(config.provider)
   if (initialProvider !== undefined) assertSubagentProviderConfiguration(initialProvider)
 
-  const install = (runtimeCtx: Context, modelSelectionPolicy: ModelSelectionPolicy | undefined): void => {
+  const install = (runtimeCtx: Context, selection: AgentModelSelection | undefined): void => {
+    const modelSelectionPolicy = selection?.policy
     const modelSelectionEnabled = modelSelectionPolicy !== undefined
     if (modelSelectionPolicy !== undefined) registerListSubagentModels(runtimeCtx, modelSelectionPolicy)
     // Load order and HMR replacement can change provider availability while
@@ -471,11 +489,15 @@ export function apply(ctx: Context, config: Config): void {
 
           const modelRequest = args as DelegationModelRequest
           const parentOptions = parentAgentOptionsForDelegation(parent)
+          const defaultSelection = selection?.defaultSelection
+          const configuredSelection = defaultSelection === undefined
+            ? config.agentOptions
+            : { ...config.agentOptions, ...defaultSelection }
           const requiresRoutePreflight = hasDelegationModelRequest(modelRequest)
-            || hasConfiguredLlmSelection(config.agentOptions)
+            || hasConfiguredLlmSelection(configuredSelection)
           const configuredChildAgentOptions = requiresRoutePreflight && providerRouteDefaults !== undefined
-            ? { ...providerRouteDefaults, ...config.agentOptions }
-            : config.agentOptions
+            ? { ...providerRouteDefaults, ...configuredSelection }
+            : configuredSelection
           const requestedChildAgentOptions = requestedAgentOptions(
             parentOptions,
             configuredChildAgentOptions,
@@ -616,8 +638,9 @@ export function apply(ctx: Context, config: Config): void {
     throw new Error('tool-subagent: `modelSelectionSettings` requires an Agent or preset scope')
   }
 
-  const selectForAgent = (agent: NonNullable<Context['agent']>): ModelSelectionPolicy | undefined => {
+  const selectForAgent = (agent: NonNullable<Context['agent']>): AgentModelSelection | undefined => {
     let allowedModels = subagentModelSelectionPolicy(agent.session)
+    let defaultSelection = subagentModelSelectionDefault(agent.session)
     if (allowedModels === undefined) {
       const parentId = agent.session.header.origin === 'subagent'
         ? agent.session.header.parentSession
@@ -625,13 +648,28 @@ export function apply(ctx: Context, config: Config): void {
       if (parentId !== undefined) {
         const parent = ctx.get('agents')?.get(parentId)
         allowedModels = parent === undefined ? undefined : subagentModelSelectionPolicy(parent.session)
+        if (defaultSelection === undefined) {
+          defaultSelection = parent === undefined ? undefined : subagentModelSelectionDefault(parent.session)
+        }
       } else if (agent.session.firstLiveSeq === 0) {
         const current = settings.current()
-        allowedModels = current.enabled ? current.allowedModels : undefined
+        if (current.enabled) {
+          allowedModels = current.allowedModels.length === 0 ? undefined : current.allowedModels
+          defaultSelection = current.defaultSelection
+        }
       }
     }
     if (allowedModels !== undefined) recordSubagentModelSelection(agent.session, allowedModels)
-    return allowedModels === undefined ? undefined : { routes: allowedModels }
+    if (defaultSelection !== undefined) {
+      recordSubagentModelSelectionDefault(agent.session, defaultSelection)
+    }
+    if (allowedModels === undefined && defaultSelection === undefined) return undefined
+    return {
+      ...allowedModels === undefined ? {} : { policy: { routes: allowedModels } },
+      ...defaultSelection === undefined ? {} : {
+        defaultSelection: agentOptionsForSubagentSelection(defaultSelection),
+      },
+    }
   }
 
   const agent = ctx.agent

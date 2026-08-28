@@ -18,10 +18,19 @@ import * as ToolInvariant from '../src/invariant.ts'
 import SubagentModelSelectionConfig, {
   SUBAGENT_MODEL_SELECTION_SETTINGS_NAMESPACE,
 } from '../src/model-selection-settings.ts'
-import { subagentModelSelectionPolicy } from '../src/model-selection-state.ts'
+import {
+  recordSubagentModelSelectionDefault,
+  subagentModelSelectionDefault,
+  subagentModelSelectionPolicy,
+} from '../src/model-selection-state.ts'
 import { text } from './harness.ts'
 
 const ALLOWED_MODELS = [{ provider: 'alpha', model: 'fast-model' }]
+const DEFAULT_SELECTION = {
+  provider: 'alpha',
+  model: 'fast-model',
+  reasoningEffort: 'high',
+} as const
 
 /** Writable in-memory settings provider for the package integration. */
 class MemorySettings extends SettingsProvider {
@@ -102,6 +111,28 @@ describe('SubagentModelSelectionConfig', () => {
       allowedModels: ALLOWED_MODELS,
     })
     expect(ctx.subagentModelSelection.current()).toEqual({ enabled: true, allowedModels: ALLOWED_MODELS })
+    await ctx.fiber.dispose()
+  })
+
+  it('stores and validates one automatic child route with its effort', async () => {
+    const ctx = new Context()
+    await ctx.plugin(MemorySettings)
+    await ctx.plugin(SubagentModelSelectionConfig, {
+      enabled: true,
+      defaultSelection: DEFAULT_SELECTION,
+    })
+
+    expect(ctx.subagentModelSelection.current()).toEqual({
+      enabled: true,
+      defaultSelection: DEFAULT_SELECTION,
+      allowedModels: [],
+    })
+    await ctx.settings.update(SUBAGENT_MODEL_SELECTION_SETTINGS_NAMESPACE, {
+      defaultSelection: { provider: 'alpha', model: 'fast-model', reasoningEffort: 'low' },
+    })
+    expect(ctx.subagentModelSelection.current().defaultSelection).toEqual({
+      provider: 'alpha', model: 'fast-model', reasoningEffort: 'low',
+    })
     await ctx.fiber.dispose()
   })
 
@@ -310,6 +341,27 @@ describe('SubagentModelSelectionConfig', () => {
     const resumedDisabled = await createAgent(ctx, 'resumed-disabled', { seed: oldSeed.events })
     expect(selectable(ctx, resumedDisabled)).toBe(false)
     expect(subagentModelSelectionPolicy(resumedDisabled.session)).toBeUndefined()
+    await ctx.fiber.dispose()
+  })
+
+  it('captures the automatic route once and inherits it in child sessions', async () => {
+    const ctx = await boot()
+    await ctx.settings.update(SUBAGENT_MODEL_SELECTION_SETTINGS_NAMESPACE, {
+      enabled: true,
+      defaultSelection: DEFAULT_SELECTION,
+    })
+    const parent = await createAgent(ctx, 'default-parent')
+    expect(subagentModelSelectionDefault(parent.session)).toEqual(DEFAULT_SELECTION)
+
+    await ctx.settings.update(SUBAGENT_MODEL_SELECTION_SETTINGS_NAMESPACE, { enabled: false })
+    const child = await createAgent(ctx, 'default-child', {
+      meta: { parentSession: parent.id, origin: 'subagent' },
+    })
+    expect(subagentModelSelectionDefault(child.session)).toEqual(DEFAULT_SELECTION)
+
+    const seed = Session.create(SessionId('default-seed'))
+    recordSubagentModelSelectionDefault(seed, DEFAULT_SELECTION)
+    expect(subagentModelSelectionDefault(seed)).toEqual(DEFAULT_SELECTION)
     await ctx.fiber.dispose()
   })
 

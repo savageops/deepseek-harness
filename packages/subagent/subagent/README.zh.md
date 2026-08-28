@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-`dsh-subagent` 是子 agent 委派背后的服务：agent（智能体）把任务交给具名子 agent，收集完成的结果，并且——对可继续子 agent 而言——跨轮次持续发送后续工作。多个提供方在同一约定下共存，因此单个组合可以并排提供进程内子 agent、进程外 ACP 或 SDK 子 agent，以及真实 Codex 或 Claude Code 子 agent。子 agent 有两种形态：一次性运行以单个结果结算，可继续子 agent 的持久会话则接受后续消息并可被中断。同一服务还回答发现类问题——存在哪些子级、它们的模式、活动状态与血缘——而不加载或恢复它们。把它与至少一个提供方后端和一个委派工具一起挂载；后端与面向模型的工具位于兄弟包中。
+`dsh-subagent` 是子 agent 委派背后的服务：agent（智能体）把任务交给具名子 agent，收集完成的结果，并且——对可继续子 agent 而言——跨轮次持续发送后续工作。多个提供方在同一约定下共存，因此单个组合可以并排提供进程内子 agent、进程外 ACP 或 SDK 子 agent，以及真实 Codex 或 Claude Code 子 agent。子 agent 有两种形态：一次性运行以单个结果结算，可继续子 agent 的持久会话则接受后续消息并可被中断。同一服务还回答发现类问题——存在哪些子级、它们的模式、活动状态与血缘——而不加载或恢复它们。把它与至少一个提供方后端和一个委派工具一起挂载；后端与面向模型的工具位于兄弟包中。面向模型的工具可以在创建边界把 harness 支持的子级固定到宿主选择的 provider、model 与 reasoning effort。
 
 ## 目录
 
@@ -45,6 +45,12 @@ kind: "package-reference"
 ### 一次性与可继续子级
 
 一次性子 agent 只运行一次，并以单个结果结算，可附带可选的结构化输出与失败时的安全诊断。启动请求可以通过 `agentOptions` 覆盖子 Agent 的提供方、模型、推理等级与输出 token 上限；每个请求的选项都要求提供方声明对应能力。可继续子 agent 保留持久会话并按顺序接受后续消息：调用方收到稳定的子 agent id、发送后续消息，并可中断当前轮次而不销毁子 agent。工具行的 `backgroundMode` 选择形态（默认 `one-shot`，或在支持的提供方上使用 `continuable`）。
+
+### 创建边界与路由继承
+
+面向模型的工具通过 `ctx.subagents.start()` 启动一次性子级。服务校验提供方能力、快照描述符，再调用提供方的 `start()`。可继续子级通过 `ctx.subagents.startContinuable()` 预留子级 id；继续管理器调用 `ctx.agents.create()`（冷边界后调用 `ctx.agents.resume()`），而 `prepareContinuable()` 只提供提供方专属的种子数据。进程内 spawn 与 fork 提供方把解析后的 `agentOptions` 传入 Agent 创建调用；DSH SDK 提供方通过子运行时握手传递路由。ACP、Codex 与 Claude Code 使用产品自有模型配置，不接受通过该 seam 传入的 DSH harness 路由覆盖。
+
+未配置子级路由时，进程内子级继承父级最新记录的 provider/model/effort；在父级首次请求前则使用创建选项。`subagent-model-selection` 中选定的宿主默认路由会替换新 Agent 定义的继承值，并由其子 Session 继承。该决定以仅进日志的 Session 状态记录，因此后续设置编辑不会重新定位已经组合的委派树。
 
 ### 后续消息、中断与发现
 

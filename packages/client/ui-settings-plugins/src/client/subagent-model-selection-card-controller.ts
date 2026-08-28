@@ -2,7 +2,9 @@
 
 import type {
   ClientRemote,
+  ModelCatalogModel,
   ModelProviderGroup,
+  ModelSelection,
 } from '@deepseek-ai/dsh-api-remotes/client'
 import { createSnapshotStore, type SnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { SettingsScope } from '@deepseek-ai/dsh-client-ui-settings/client'
@@ -21,6 +23,8 @@ export interface AllowedSubagentModel {
 export interface SubagentModelSelectionSettings {
   /** Whether model-facing child route selection applies to new Sessions. */
   enabled: boolean
+  /** Automatic child route used when a delegation call does not choose one. */
+  defaultSelection?: ModelSelection
   /** Exact child routes offered to newly composed top-level Sessions. */
   allowedModels: AllowedSubagentModel[]
 }
@@ -37,12 +41,16 @@ export interface SubagentModelCandidate extends AllowedSubagentModel {
   available: boolean
   /** Whether the current draft authorizes this route. */
   selected: boolean
+  /** Exact-model reasoning metadata from the live catalog, when available. */
+  reasoning?: ModelCatalogModel['reasoning']
 }
 
 /** State rendered by the staged allowlist card. */
 export interface SubagentModelSelectionCardState extends CardShell {
   /** Whether the draft enables model-facing child route selection. */
   enabled: boolean
+  /** Automatic child route staged for new Agents, or null for inheritance. */
+  defaultSelection: ModelSelection | null
   /** Live catalog joined with stored routes. */
   candidates: readonly SubagentModelCandidate[]
   /** Adapter-directory request state. */
@@ -63,6 +71,10 @@ export interface SubagentModelSelectionCardFace {
   toggleEnabled: () => void
   /** Stage one exact route as allowed or denied. */
   toggleModel: (key: string) => void
+  /** Stage the automatic child model route. */
+  selectDefaultModel: (key: string) => void
+  /** Stage the automatic child reasoning effort. */
+  selectDefaultEffort: (effort: string | undefined) => void
   /** Retry the adapter directory. */
   retryCatalog: () => void
   /** Persist the switch and exact routes as one revision-fenced mutation. */
@@ -104,6 +116,7 @@ export function subagentModelCandidates(
       modelName: model.name,
       available: true,
       selected: selected.has(key),
+      ...model.reasoning === undefined ? {} : { reasoning: model.reasoning },
     }
   }))
   for (const route of storedByKey.values()) {
@@ -126,6 +139,12 @@ function sameRoutes(left: readonly AllowedSubagentModel[], right: readonly Allow
   return left.every(route => rightKeys.has(subagentModelKey(route)))
 }
 
+function sameSelection(left: ModelSelection | null, right: ModelSelection | null): boolean {
+  return left?.provider === right?.provider
+    && left?.model === right?.model
+    && left?.reasoningEffort === right?.reasoningEffort
+}
+
 /** Bridges one settings scope and the live adapter directory onto a staged card. */
 export class SubagentModelSelectionCardController {
   private catalogGroups: readonly ModelProviderGroup[] = []
@@ -133,6 +152,7 @@ export class SubagentModelSelectionCardController {
   private catalogStatus: SubagentModelSelectionCardState['catalogStatus'] = 'idle'
   private draftEnabled: boolean | undefined
   private draftRoutes: Map<string, AllowedSubagentModel> | undefined
+  private draftDefaultSelection: ModelSelection | null | undefined
   private draftRevision: number | undefined
   private saving = false
   private failed = false
@@ -156,7 +176,8 @@ export class SubagentModelSelectionCardController {
       if (!this.saving && this.draftRoutes !== undefined
         && this.scope.getSnapshot().revision !== this.draftRevision) {
         if (this.currentEnabled() === this.enabled()
-          && sameRoutes(this.currentRoutes(), this.desiredRoutes())) this.clearDraft()
+          && sameRoutes(this.currentRoutes(), this.desiredRoutes())
+          && sameSelection(this.currentDefaultSelection(), this.desiredDefaultSelection())) this.clearDraft()
         else this.conflicted = true
       }
       if (this.enabled() && this.catalogStatus === 'idle') void this.loadCatalog()
@@ -182,6 +203,8 @@ export class SubagentModelSelectionCardController {
       hooks: { subagentModelSelectionCard: this.store },
       toggleEnabled: () => { this.toggleEnabled() },
       toggleModel: (key) => { this.toggleModel(key) },
+      selectDefaultModel: (key) => { this.selectDefaultModel(key) },
+      selectDefaultEffort: (effort) => { this.selectDefaultEffort(effort) },
       retryCatalog: () => { void this.loadCatalog() },
       save: () => { void this.save() },
       discard: () => { this.discard() },
@@ -194,6 +217,11 @@ export class SubagentModelSelectionCardController {
 
   private currentEnabled(): boolean {
     return this.scope.getSnapshot().value?.enabled ?? false
+  }
+
+  private currentDefaultSelection(): ModelSelection | null {
+    const selection = this.scope.getSnapshot().value?.defaultSelection
+    return selection === undefined ? null : { ...selection }
   }
 
   private selected(): Set<string> {
@@ -211,6 +239,9 @@ export class SubagentModelSelectionCardController {
       this.draftRoutes = new Map(
         snapshot.value?.allowedModels.map(route => [subagentModelKey(route), { ...route }]) ?? [],
       )
+      this.draftDefaultSelection = snapshot.value?.defaultSelection === undefined
+        ? null
+        : { ...snapshot.value.defaultSelection }
       this.draftRevision = snapshot.revision
     }
     return this.draftRoutes
@@ -237,9 +268,47 @@ export class SubagentModelSelectionCardController {
     this.publish()
   }
 
+  private selectDefaultModel(key: string): void {
+    if (!this.enabled() || this.saving || !this.scope.getSnapshot().writable) return
+    if (key.length === 0) {
+      this.beginDraft()
+      this.draftDefaultSelection = null
+      this.failed = false
+      this.publish()
+      return
+    }
+    const candidate = this.candidates().find(candidate => candidate.key === key)
+    if (candidate === undefined || !candidate.available) return
+    this.beginDraft()
+    this.draftDefaultSelection = {
+      provider: candidate.provider,
+      model: candidate.model,
+      ...candidate.reasoning?.defaultEffort === undefined
+        ? {}
+        : { reasoningEffort: candidate.reasoning.defaultEffort },
+    }
+    this.failed = false
+    this.publish()
+  }
+
+  private selectDefaultEffort(effort: string | undefined): void {
+    if (!this.enabled() || this.saving || !this.scope.getSnapshot().writable) return
+    const current = this.defaultSelection()
+    if (current === null) return
+    this.beginDraft()
+    this.draftDefaultSelection = {
+      provider: current.provider,
+      model: current.model,
+      ...effort === undefined ? {} : { reasoningEffort: effort },
+    }
+    this.failed = false
+    this.publish()
+  }
+
   private clearDraft(): void {
     this.draftEnabled = undefined
     this.draftRoutes = undefined
+    this.draftDefaultSelection = undefined
     this.draftRevision = undefined
     this.failed = false
     this.conflicted = false
@@ -254,6 +323,14 @@ export class SubagentModelSelectionCardController {
   private candidates(): SubagentModelCandidate[] {
     const retained = new Map(this.currentRoutes().map(route => [subagentModelKey(route), route]))
     for (const [key, route] of this.draftRoutes ?? []) retained.set(key, route)
+    const defaultSelection = this.defaultSelection()
+    if (defaultSelection !== null) {
+      const key = subagentModelKey(defaultSelection)
+      if (!retained.has(key)) retained.set(key, {
+        provider: defaultSelection.provider,
+        model: defaultSelection.model,
+      })
+    }
     return subagentModelCandidates(this.catalogGroups, [...retained.values()], this.selected())
   }
 
@@ -261,13 +338,29 @@ export class SubagentModelSelectionCardController {
     return [...this.draftRoutes?.values() ?? this.currentRoutes()].map(route => ({ ...route }))
   }
 
+  private defaultSelection(): ModelSelection | null {
+    return this.draftDefaultSelection === undefined
+      ? this.currentDefaultSelection()
+      : this.draftDefaultSelection === null
+        ? null
+        : { ...this.draftDefaultSelection }
+  }
+
+  private desiredDefaultSelection(): ModelSelection | null {
+    return this.defaultSelection()
+  }
+
   private async save(): Promise<void> {
     const snapshot = this.scope.getSnapshot()
     const desiredEnabled = this.enabled()
     const desired = this.desiredRoutes()
+    const desiredDefault = this.desiredDefaultSelection()
+    const currentDefault = this.currentDefaultSelection()
     if (this.disposed || snapshot.status !== 'ready' || !snapshot.writable || this.saving
-      || (this.currentEnabled() === desiredEnabled && sameRoutes(this.currentRoutes(), desired))
-      || (desiredEnabled && desired.length === 0)) return
+      || (this.currentEnabled() === desiredEnabled
+        && sameRoutes(this.currentRoutes(), desired)
+        && sameSelection(currentDefault, desiredDefault))
+      || (desiredEnabled && desired.length === 0 && desiredDefault === null)) return
     if (this.draftRoutes !== undefined && snapshot.revision !== this.draftRevision) {
       this.conflicted = true
       this.publish()
@@ -285,9 +378,22 @@ export class SubagentModelSelectionCardController {
         path: ['allowedModels'],
         value: desired.map(route => ({ provider: route.provider, model: route.model })),
       },
+      ...desiredDefault === null
+        ? snapshot.value?.defaultSelection === undefined
+          ? []
+          : [{ op: 'unset' as const, path: ['defaultSelection'] }]
+        : [{ op: 'set' as const, path: ['defaultSelection'], value: {
+          provider: desiredDefault.provider,
+          model: desiredDefault.model,
+          ...desiredDefault.reasoningEffort === undefined
+            ? {}
+            : { reasoningEffort: desiredDefault.reasoningEffort },
+        } }],
     ], this.draftRevision)
     if (generation !== this.saveGeneration) return
-    const landed = this.currentEnabled() === desiredEnabled && sameRoutes(this.currentRoutes(), desired)
+    const landed = this.currentEnabled() === desiredEnabled
+      && sameRoutes(this.currentRoutes(), desired)
+      && sameSelection(this.currentDefaultSelection(), desiredDefault)
     this.saving = false
     this.failed = !landed
     if (landed) this.clearDraft()
@@ -339,14 +445,19 @@ export class SubagentModelSelectionCardController {
     const current = this.currentRoutes()
     const desired = this.desiredRoutes()
     const enabled = this.enabled()
+    const currentDefault = this.currentDefaultSelection()
+    const desiredDefault = this.desiredDefaultSelection()
     return {
       available: snapshot.status === 'ready',
       writable: snapshot.writable,
-      dirty: this.currentEnabled() !== enabled || !sameRoutes(current, desired),
-      invalid: enabled && desired.length === 0,
+      dirty: this.currentEnabled() !== enabled
+        || !sameRoutes(current, desired)
+        || !sameSelection(currentDefault, desiredDefault),
+      invalid: enabled && desired.length === 0 && desiredDefault === null,
       saving: this.saving,
       failed: this.failed,
       enabled,
+      defaultSelection: desiredDefault,
       candidates: this.candidates(),
       catalogStatus: this.catalogStatus,
       catalogPartial: this.catalogPartial,

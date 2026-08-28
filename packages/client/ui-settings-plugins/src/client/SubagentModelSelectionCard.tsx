@@ -44,6 +44,14 @@ export function SubagentModelSelectionCard(props: SubagentModelSelectionCardProp
       group.candidates.push(candidate)
     }
   }
+  const defaultKey = state.defaultSelection === null
+    ? ''
+    : `${state.defaultSelection.provider}\0${state.defaultSelection.model}`
+  const defaultCandidate = state.defaultSelection === null
+    ? undefined
+    : state.candidates.find(candidate => candidate.key === defaultKey)
+  const reasoning = defaultCandidate?.reasoning
+  const effortValue = state.defaultSelection?.reasoningEffort ?? reasoning?.defaultEffort ?? ''
   const renderCandidate = (candidate: SubagentModelCandidate) => (
     <label key={candidate.key} className={css.model}>
       <input
@@ -92,6 +100,58 @@ export function SubagentModelSelectionCard(props: SubagentModelSelectionCardProp
       {state.enabled
         ? (
           <div className={css.selection}>
+            <div className={css.defaultSelection}>
+              <label className={css.field}>
+                <span className={css.fieldLabel}>{t('subagentModelSelectionDefault')}</span>
+                <select
+                  aria-label={t('subagentModelSelectionDefault')}
+                  value={defaultKey}
+                  disabled={!state.writable || state.saving || state.catalogStatus === 'loading'}
+                  onChange={(event) => { props.selectDefaultModel(event.currentTarget.value) }}
+                >
+                  <option value="">{t('subagentModelSelectionUseParent')}</option>
+                  {[...availableGroups].map(([provider, group]) => (
+                    <optgroup key={provider} label={group.providerName}>
+                      {group.candidates.map(candidate => (
+                        <option key={candidate.key} value={candidate.key}>
+                          {`${candidate.modelName} · ${candidate.provider}/${candidate.model}`}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
+                  {defaultCandidate !== undefined && !defaultCandidate.available
+                    ? (
+                      <option value={defaultCandidate.key}>
+                        {`${defaultCandidate.modelName} · ${defaultCandidate.provider}/${defaultCandidate.model} (${t('subagentModelSelectionUnavailable')})`}
+                      </option>
+                    )
+                    : null}
+                </select>
+              </label>
+              {reasoning !== undefined
+                ? (
+                  <label className={css.field}>
+                    <span className={css.fieldLabel}>{t('subagentModelSelectionEffort')}</span>
+                    <select
+                      aria-label={t('subagentModelSelectionEffort')}
+                      value={effortValue}
+                      disabled={!state.writable || state.saving}
+                      onChange={(event) => {
+                        const value = event.currentTarget.value
+                        props.selectDefaultEffort(value.length === 0 ? undefined : value)
+                      }}
+                    >
+                      {reasoning.defaultEffort === undefined
+                        ? <option value="">{t('subagentModelSelectionProviderDefault')}</option>
+                        : null}
+                      {reasoning.efforts.map(effort => (
+                        <option key={effort.id} value={effort.id}>{effort.name}</option>
+                      ))}
+                    </select>
+                  </label>
+                )
+                : null}
+            </div>
             {state.catalogStatus === 'loading'
               ? <p className={css.notice} role="status">{t('subagentModelSelectionLoading')}</p>
               : null}

@@ -28,6 +28,11 @@ let setupAgentCounter = 0
 /** Test-only opt-in translated to the real Host setting and Session path. */
 type SetupConfig = tool.Config & {
   withModelSelection?: boolean
+  defaultSelection?: {
+    provider: string
+    model: string
+    reasoningEffort?: string
+  }
   parentAgentOptions?: AgentOptions
 }
 
@@ -42,10 +47,11 @@ const TEST_ALLOWED_MODELS = [
 
 export async function setup(toolConfig: SetupConfig, mockConfig: Partial<mock.Config> = {}): Promise<Context> {
   const ctx = new Context()
-  const { withModelSelection, parentAgentOptions, ...config } = toolConfig
+  const { withModelSelection, defaultSelection, parentAgentOptions, ...config } = toolConfig
   if (withModelSelection === true) {
     await ctx.plugin(SubagentModelSelectionConfig, {
       enabled: true,
+      ...defaultSelection === undefined ? {} : { defaultSelection },
       allowedModels: TEST_ALLOWED_MODELS,
     })
     await mountAgentLoopTestDependencies(ctx)

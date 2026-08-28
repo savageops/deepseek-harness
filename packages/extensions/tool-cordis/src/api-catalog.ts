@@ -2161,7 +2161,7 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         signature: 'current(): SubagentModelSelectionSettings',
         description: 'Read a detached selection preference for the next eligible Agent publication.',
         parameters: [],
-        returns: 'the enabled state and exact allowed routes.',
+        returns: 'the enabled state, automatic child route, and exact allowed routes.',
       },
     ],
   },
