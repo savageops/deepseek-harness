@@ -10,6 +10,25 @@ Source: [`packages/core/session/src/types.ts`](../../packages/core/session/src/t
 
 The append-only event types. Merge-extensible: a plugin declares extra event types via declaration merging — e.g. the [compaction seam](compaction.md) adds `compaction/start` / `compaction/summary` / `compaction/end`, and `@deepseek-ai/dsh-hook-protocol` adds log-only `hook/invoked` / `hook/result` records for a hook bridge. Like `compaction/*`, these are NOT `SurfaceEventType`s (no `surfaceOp`). The generated [persistence log event catalog](../persistence-catalog.md) enumerates every member — core and merged — with its payload, surface badge, and declaration site.
 
+### External required event types
+
+The generated vocabulary covers declarations in this repository. An out-of-repository plugin that writes an event required for faithful replay registers it through `ctx.sessionEventTypes` before any persistence read can observe its log:
+
+```ts
+import { Context } from '@deepseek-ai/cordis'
+import '@deepseek-ai/dsh-session'
+
+const ctx = new Context()
+ctx.inject(['sessionEventTypes'], (scope) => {
+  scope.effect(
+    () => scope.sessionEventTypes.register(['memory/changed'], 'my-plugin'),
+    'my-plugin: session event types',
+  )
+})
+```
+
+The registration is atomic and effect-owned. Duplicate ownership and first-party names are rejected. The persistence reader accepts the external type only while that registration is active; once the owner unloads, the existing fail-closed refusal returns. Registration is admission, not interpretation: the plugin still owns the declaration-merged payload, projection, and event invariants. External types remain outside the generated [persistence log event catalog](../persistence-catalog.md).
+
 ```ts type-equiv
 /** A user-role specialization of the one shared message representation. */
 interface UserMessage extends Message {
@@ -734,6 +753,36 @@ inspect( sessionId: SessionId, signal?: AbortSignal, ): Promise<{ meta: SessionH
 Types: [SessionHeader](persistence.md) · [SessionId](core.md) · [SessionSearchRequest](session-query.md)
 
 Source: [`packages/api/session-controller/src/index.ts`](../../packages/api/session-controller/src/index.ts)
+
+<a id="ctxsessioneventtypes--sessioneventtyperegistry"></a>
+
+### `ctx.sessionEventTypes` — `SessionEventTypeRegistry`
+
+The public runtime admission surface for external durable event types.
+
+```ts cordis-catalog
+/**
+ * Register one or more external event types as a single atomic ownership
+ * unit. The returned disposer removes only this registration and is safe to
+ * call more than once.
+ *
+ * @param typeOrTypes - one slash-qualified type or a non-empty batch.
+ * @param owner - stable plugin or package label used in collision errors.
+ * @returns an idempotent disposer for this registration batch.
+ * @throws when a type is malformed, first-party, already registered, or the
+ *   batch contains a duplicate.
+ */
+register(typeOrTypes: string | readonly string[], owner?: string): () => void
+
+/**
+ * Whether an external event type is currently registered by an active owner.
+ * @param type - event type to test.
+ * @returns true when an active owner has registered the type.
+ */
+has(type: string): boolean
+```
+
+Source: [`packages/core/session/src/event-types.ts`](../../packages/core/session/src/event-types.ts)
 
 <a id="ctxsessions--sessionstore"></a>
 

@@ -1375,6 +1375,30 @@ export function runCoordinatorContract(name: string, makeFixture: () => Promise<
       }
     })
 
+    it('loads an external event type while its active owner is registered', async () => {
+      const fix = await makeFixture()
+      const { ctx, fiber } = await freshCtx(fix)
+      const disposeType = ctx.sessionEventTypes.register('fixture/required', 'fixture-plugin')
+      try {
+        const required = meta('registered-required', WORK)
+        const base = oneTurnLog()
+        await ctx.sessionPersistence.create(required)
+        await ctx.sessionPersistence.append(required.id, [
+          ...base,
+          { type: 'fixture/required', seq: base.length, time: 99, data: { payload: 1 } } as unknown as SessionEvent,
+        ])
+        const loaded = await ctx.sessionPersistence.load(required.id)
+        expect(loaded.events.at(-1)).toMatchObject({
+          type: 'fixture/required',
+          data: { payload: 1 },
+        })
+      } finally {
+        disposeType()
+        await fiber.dispose()
+        await fix.cleanup()
+      }
+    })
+
     it('round-trips a header with parentSession (fork lineage)', async () => {
       const fix = await makeFixture()
       const { ctx, fiber } = await freshCtx(fix)

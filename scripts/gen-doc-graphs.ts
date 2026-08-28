@@ -150,6 +150,14 @@ const SERVICE_ROLES: ServiceRole[] = [
     note: 'Owns append-only Session instances and emits the durable session event feed.',
   },
   {
+    key: 'sessionEventTypes',
+    pkg: 'session',
+    title: 'External required event admission',
+    mode: 'core',
+    consumers: ['session-persistence'],
+    note: 'Active out-of-repository event owners register required types here; persistence admits them only while the owner can interpret its records.',
+  },
+  {
     key: 'sessionController',
     pkg: 'api-session-controller',
     title: 'Host Session Remote controller',

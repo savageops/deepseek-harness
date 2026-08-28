@@ -10,6 +10,25 @@
 
 仅追加的事件类型。可通过声明合并扩展：插件通过 declaration merging 声明额外的事件类型。例如[压缩（compaction） seam](compaction.zh.md) 添加了 `compaction/start` / `compaction/summary` / `compaction/end`，`@deepseek-ai/dsh-hook-protocol` 为钩子桥接添加了仅记录日志的 `hook/invoked` / `hook/result` 记录。与 `compaction/*` 一样，这些都不是 `SurfaceEventType`（没有 `surfaceOp`）。生成的[持久化日志事件目录](../persistence-catalog.zh.md)列举了所有成员（核心与合并扩展的），包含其 payload、surface 标记与声明位置。
 
+### 外部必需事件类型
+
+生成的词汇覆盖本仓库中的声明。仓库外写入必需事件、且该事件对忠实回放不可缺少的插件，必须在任何持久化读取可以看到其日志之前，通过 `ctx.sessionEventTypes` 注册它：
+
+```ts
+import { Context } from '@deepseek-ai/cordis'
+import '@deepseek-ai/dsh-session'
+
+const ctx = new Context()
+ctx.inject(['sessionEventTypes'], (scope) => {
+  scope.effect(
+    () => scope.sessionEventTypes.register(['memory/changed'], 'my-plugin'),
+    'my-plugin: session event types',
+  )
+})
+```
+
+注册是原子的并由 effect 所有。重复所有权和核心事件名称都会被拒绝。持久化读取只在注册有效时接纳外部类型；所有者卸载后，原有的 fail-closed 拒绝会恢复。注册是接纳而非解释：payload 的声明合并、投影和事件不变式仍由插件负责。外部类型仍不进入生成的[持久化日志事件目录](../persistence-catalog.zh.md)。
+
 ```ts type-equiv
 /** A user-role specialization of the one shared message representation. */
 interface UserMessage extends Message {
@@ -738,6 +757,36 @@ inspect( sessionId: SessionId, signal?: AbortSignal, ): Promise<{ meta: SessionH
 Types: [SessionHeader](persistence.zh.md) · [SessionId](core.zh.md) · [SessionSearchRequest](session-query.zh.md)
 
 Source: [`packages/api/session-controller/src/index.ts`](../../packages/api/session-controller/src/index.ts)
+
+<a id="ctxsessioneventtypes--sessioneventtyperegistry"></a>
+
+### `ctx.sessionEventTypes` — `SessionEventTypeRegistry`
+
+The public runtime admission surface for external durable event types.
+
+```ts cordis-catalog
+/**
+ * Register one or more external event types as a single atomic ownership
+ * unit. The returned disposer removes only this registration and is safe to
+ * call more than once.
+ *
+ * @param typeOrTypes - one slash-qualified type or a non-empty batch.
+ * @param owner - stable plugin or package label used in collision errors.
+ * @returns an idempotent disposer for this registration batch.
+ * @throws when a type is malformed, first-party, already registered, or the
+ *   batch contains a duplicate.
+ */
+register(typeOrTypes: string | readonly string[], owner?: string): () => void
+
+/**
+ * Whether an external event type is currently registered by an active owner.
+ * @param type - event type to test.
+ * @returns true when an active owner has registered the type.
+ */
+has(type: string): boolean
+```
+
+Source: [`packages/core/session/src/event-types.ts`](../../packages/core/session/src/event-types.ts)
 
 <a id="ctxsessions--sessionstore"></a>
 

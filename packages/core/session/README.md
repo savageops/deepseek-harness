@@ -57,6 +57,25 @@ Surface events (`user/message`, `assistant/message`, `tool/result`) must declare
 
 `ctx.sessions.flush(session)` dispatches the awaited durability checkpoint: every persistence listener flushes and the call settles after all of them. A producer that needs an immediate durability barrier awaits it instead of assuming the write-behind drained.
 
+### Register plugin-owned event types
+
+The generated `KNOWN_SESSION_EVENT_TYPES` set covers event declarations in this repository. A plugin that persists a required event outside the repository must register its types through `ctx.sessionEventTypes` before any history read can interpret them:
+
+```ts
+import { Context } from '@deepseek-ai/cordis'
+import '@deepseek-ai/dsh-session'
+
+const ctx = new Context()
+ctx.inject(['sessionEventTypes'], (scope) => {
+  scope.effect(
+    () => scope.sessionEventTypes.register(['memory/changed'], 'my-plugin'),
+    'my-plugin: session event types',
+  )
+})
+```
+
+Registration is atomic, rejects collisions with first-party or already-owned types, and returns an idempotent disposer. The caller owns that disposer with its plugin effect. Unregistering a required type makes its stored sessions fail closed again; the core never silently drops an event it cannot interpret. Registration admits the durable type only — the plugin still owns its declaration-merged payload, projection, and event semantics.
+
 -----
 
 <a id="understand-the-implementation"></a>
@@ -80,6 +99,7 @@ The package is built on event sourcing: a `Session` is an append-only log of typ
 | File | Role |
 |---|---|
 | [`src/index.ts`](src/index.ts) | Plugin entry: `SessionStore` service, store lifecycle, `fork`, `flush` |
+| [`src/event-types.ts`](src/event-types.ts) | Effect-owned admission registry for external required event types |
 | [`src/types.ts`](src/types.ts) | `SessionEventMap`, `SessionEvent`, `UserMessage`, `SessionHeader`, `TurnEndReasonMap` |
 | [`src/surface.ts`](src/surface.ts) | Ordered surface projection, replacement validation, `deriveEventMessage` |
 | [`src/request-header.ts`](src/request-header.ts) | `request/header` folding and reconstruction |
@@ -170,7 +190,7 @@ Logging causes no invalidation, and exact reconstruction preserves request-prefi
 These limits define when the session store needs special care. They are current package constraints, not a task backlog.
 
 - **`fork()` cuts only at stable boundaries of live sessions** — the selected prefix must end outside an open turn and the source must be in the store; forking a persisted-but-unloaded session is excluded from the [fork API](../../../.agents/notes/implemented/feature/2026-06-30-session-store-fork-api.md).
-- **`SESSION_FORMAT_VERSION` stays pinned at `0`** — pre-release, no broad compatibility implied: `Session` accepts only current seed shapes, a backend refuses any other version, and every unknown event type refuses reconstruction ([mechanism](../../../.agents/notes/implemented/simplification/2026-08-25-fail-closed-session-event-vocabulary.md)).
+- **`SESSION_FORMAT_VERSION` stays pinned at `0`** — pre-release, no broad compatibility implied: `Session` accepts only current seed shapes, a backend refuses any other version, and every unregistered event type refuses reconstruction ([mechanism](../../../.agents/notes/implemented/simplification/2026-08-25-fail-closed-session-event-vocabulary.md); [external registration](../../../.agents/notes/implemented/architecture/2026-08-28-session-event-registration.md)).
 - **`TurnEndReasonMap` omits the ACP-named `refusal` / `max_turn_requests` variants** — producer-gated: they land when an adapter or the loop first emits them.
 - **No session tree beyond fork** — a pi-style entry tree over branched sessions is deferred unless a consumer needs more than boundary-based forking.
 

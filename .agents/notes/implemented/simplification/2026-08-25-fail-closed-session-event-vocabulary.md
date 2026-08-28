@@ -18,7 +18,7 @@ Every session event type is required-on-read. After supported legacy records are
 
 `SESSION_FORMAT_VERSION` remains one monotonic integer. A writer bumps it when an older runtime cannot interpret a structural or semantic change with full correctness: session header fields, event envelope fields, core event semantics, or the `SurfaceEventType`/`SurfaceOp` mechanism. Adding an event type alone does not require a bump because an older reader refuses that exact unknown type instead of misreading the log. Equal versions read normally; unequal versions currently refuse with a directional diagnostic. The n→n+1 upgrader chain remains deferred until a real v0→v1 step provides an input and output to test. A future view upgrade belongs in memory, with durable replacement only when the user continues the session; a missing step leaves the source artifact available for raw viewing.
 
-Repository-external `SessionEventMap` members remain outside the generated set. They can run and persist during the live process, but a first-party persistence reader refuses them on reload until a real external-event consumer justifies a registration mechanism. This preserves the existing loud pre-release limitation without a composition-dependent known set.
+Repository-external `SessionEventMap` members remain outside the generated set. They can run and persist during the live process, but a first-party persistence reader refuses them on reload unless an active external-event owner registers them through the runtime seam documented in [the session-event registration note](../architecture/2026-08-28-session-event-registration.md). The generated set remains composition-independent; the active registration is the explicit compatibility handshake for the interpreter that can faithfully consume the type. The original no-registration boundary and its rationale remain the baseline for unowned types.
 
 ## Alternatives considered
 
@@ -28,7 +28,7 @@ Repository-external `SessionEventMap` members remain outside the generated set. 
 
 **Bump the session format for every new event type.** Rejected because the generated type guard already makes older readers fail safely at the exact unsupported record, while newer readers continue to accept older logs. The format integer remains reserved for changes that alter how known records must be interpreted.
 
-**Register known event names from mounted plugins.** Rejected without a current external consumer because the same build would accept or reject one stored log according to runtime composition. A future registration design must distinguish required plugin state from genuinely optional records and preserve that distinction on disk.
+**Register known event names from mounted plugins.** Rejected at the time because no external consumer existed and the same build would accept or reject one stored log according to runtime composition. The later tracking-plugin consumer justified a narrow required-type registration seam; it does not change the fail-closed rule for unowned types or add optional per-record skipping.
 
 **Use major/minor versions or rewrite on view.** Rejected because upgrade availability is a property of each version step, not a promise encoded by two counters, and opening a session must not destructively rewrite its only artifact. A converter defect must not turn browsing into data loss or make an older runtime lose access merely because a newer one viewed the log.
 

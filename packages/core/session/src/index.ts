@@ -19,6 +19,7 @@ import { snapshotJsonValue } from './json.ts'
 import { deriveEventMessage, SurfaceManager } from './surface.ts'
 import type { SessionSurface } from './surface.ts'
 import { foldRequestHeader } from './request-header.ts'
+import { SessionEventTypeRegistry } from './event-types.ts'
 
 export * from './types.ts'
 export { SessionPreparation } from './preparation.ts'
@@ -33,10 +34,13 @@ export type { SessionSurface, SurfaceFoldReplacement, SurfaceFoldResult } from '
 export { deriveEventMessage, foldSurface, isAppendSurfaceEvent, isReplacementSurfaceEvent, isSurfaceEvent, isSurfaceEligibleType } from './surface.ts'
 export { canonicalHeader, foldRequestHeader, headerEquals } from './request-header.ts'
 export { KNOWN_SESSION_EVENT_TYPES } from './known-event-types.ts'
+export { SessionEventTypeRegistry } from './event-types.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
     sessions: SessionStore
+    /** Runtime admission registry for required event types owned by active plugins. */
+    sessionEventTypes: SessionEventTypeRegistry
   }
 
   interface Events {
@@ -793,6 +797,7 @@ export class SessionStore extends Service {
 
   constructor(ctx: Context) {
     super(ctx, 'sessions')
+    ctx.provide('sessionEventTypes', new SessionEventTypeRegistry())
     ctx.inject(['typert'], (typeCtx) => {
       typeCtx.typert.lookups.register('session', {
         parameter: 'session',

@@ -1440,6 +1440,26 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'sessionEventTypes',
+    summary: 'The public runtime admission surface for external durable event types.',
+    description: 'The public runtime admission surface for external durable event types.',
+    methods: [
+      {
+        signature: 'register(typeOrTypes: string | readonly string[], owner?: string): () => void',
+        description: 'Register one or more external event types as a single atomic ownership unit. The returned disposer removes only this registration and is safe to call more than once.',
+        parameters: [{ name: 'typeOrTypes', description: 'one slash-qualified type or a non-empty batch.' }, { name: 'owner', description: 'stable plugin or package label used in collision errors.' }],
+        returns: 'an idempotent disposer for this registration batch.',
+        throws: ['when a type is malformed, first-party, already registered, or the batch contains a duplicate.'],
+      },
+      {
+        signature: 'has(type: string): boolean',
+        description: 'Whether an external event type is currently registered by an active owner.',
+        parameters: [{ name: 'type', description: 'event type to test.' }],
+        returns: 'true when an active owner has registered the type.',
+      },
+    ],
+  },
+  {
     key: 'sessionFileReferences',
     summary: 'Host Remote adapter over the composed file-reference provider.',
     description: 'Host Remote adapter over the composed file-reference provider.',
