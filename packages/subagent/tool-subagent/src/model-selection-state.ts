@@ -11,6 +11,15 @@ import {
 declare module '@deepseek-ai/dsh-session/types' {
   interface SessionEventMap {
     /**
+     * Records the child-runtime provider captured for this Session's
+     * delegation definition. Absence means the tool's configured profile
+     * provider. Log-only: it never enters model history.
+     */
+    'subagent/runtime-provider-selection': {
+      /** Exact `ctx.subagents` provider name used by this Session's tool. */
+      provider: string
+    }
+    /**
      * Records that this session's delegation tool exposes child provider,
      * model, and reasoning-effort selection. Appended before the first model
      * request; absence means the fixed-route definition. Log-only: it carries
@@ -31,6 +40,31 @@ declare module '@deepseek-ai/dsh-session/types' {
       selection: SubagentModelSelection
     }
   }
+}
+
+/**
+ * Read the child-runtime provider captured for one delegation definition.
+ * @param session - session whose durable runtime decision is read.
+ * @returns the registered provider name, or undefined for the fixed-provider definition.
+ */
+export function subagentRuntimeProviderSelection(session: Session): string | undefined {
+  const event = session.events.find(candidate => candidate.type === 'subagent/runtime-provider-selection')
+  if (event?.type !== 'subagent/runtime-provider-selection') return undefined
+  if (typeof event.data.provider !== 'string' || event.data.provider.length === 0) {
+    throw new Error('subagent/runtime-provider-selection requires a non-empty provider name')
+  }
+  return event.data.provider
+}
+
+/**
+ * Append the runtime provider captured by a Session's delegation definition.
+ * @param session - session receiving the durable runtime decision.
+ * @param provider - exact registered child-runtime provider name.
+ */
+export function recordSubagentRuntimeProviderSelection(session: Session, provider: string): void {
+  if (subagentRuntimeProviderSelection(session) !== undefined) return
+  if (provider.length === 0) throw new Error('subagent runtime selection requires a non-empty provider name')
+  session.append('subagent/runtime-provider-selection', { provider })
 }
 
 /**

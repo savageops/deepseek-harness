@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`dsh-subagent` is the service behind child-agent delegation: an agent hands a task to a named child, collects the finished result, and — for continuable children — keeps sending follow-up work across turns. Multiple providers coexist under one contract, so a single composition can offer in-process children, out-of-process ACP or SDK children, and real Codex or Claude Code children side by side. Children come in two shapes: one-shot runs that settle with a single result, and continuable children whose durable session accepts later messages and can be interrupted. The same service answers discovery questions — which children exist, their mode, activity, and lineage — without loading or resuming them. Mount it with at least one provider backend and a delegation tool; the backends and the model-facing tools live in sibling packages. The model-facing tool can pin a harness-backed child to one Host-selected provider, model, and reasoning effort at the creation boundary.
+`dsh-subagent` is the service behind child-agent delegation: an agent hands a task to a named child, collects the finished result, and — for continuable children — keeps sending follow-up work across turns. Multiple providers coexist under one contract, so a single composition can offer in-process children, out-of-process ACP or SDK children, and real Codex or Claude Code children side by side. Children come in two shapes: one-shot runs that settle with a single result, and continuable children whose durable session accepts later messages and can be interrupted. The same service answers discovery questions — which children exist, their mode, activity, and lineage — without loading or resuming them. It also exposes a browser-safe runtime directory for settings: labels and model-authority metadata cross the Remote boundary, while executable configuration remains Host-owned. Mount it with at least one provider backend and a delegation tool; the backends and the model-facing tools live in sibling packages. The model-facing tool can pin a harness-backed child to one Host-selected provider, model, and reasoning effort at the creation boundary.
 
 ## Table of Contents
 
@@ -42,15 +42,21 @@ Mount the service with a provider and the delegation tool. The provider register
 
 An agent that calls the tool gets the child's final answer as the tool result. Mounting the service alone changes nothing: nothing can delegate until a provider and a tool are composed.
 
+### Runtime directory
+
+`remoteExportProviders()` exposes the currently registered child runtimes to the web settings surface. Each row contains only the registry name, a display label, a product kind, a short description, and `modelAuthority` (`harness` or `native`). Commands, arguments, working directories, environment values, credentials, and native product options never enter this client projection. The settings card uses the registry name for the later Session binding; provider reloads can leave a saved name visible as unavailable until the profile registers it again.
+
 ### One-shot and continuable children
 
 One-shot children run once and settle with a single result, plus an optional structured output and a safe diagnostic on failure. A start request may override the child Agent's provider, model, reasoning effort, and output-token limit through `agentOptions`; every requested option requires the provider's matching capability. Continuable children keep a durable session and accept later messages in order: the caller receives a stable child id, sends follow-ups, and can interrupt the current turn without destroying the child. The tool row's `backgroundMode` picks the shape (`one-shot` by default, or `continuable` on providers that support it). In both shapes, the selected `agentOptions` are resolved before the child is created; the continuable descriptor stores the resolved provider, model, and effort for cold resume.
 
 ### Creation boundary and route inheritance
 
-The model-facing tool starts a one-shot child through `ctx.subagents.start()`. The service validates provider capabilities, snapshots the descriptor, and calls the provider's `start()` method. For a continuable child, `ctx.subagents.startContinuable()` reserves the child id and the continuation manager calls `ctx.agents.create()` (or `ctx.agents.resume()` after a cold boundary); `prepareContinuable()` contributes only provider-specific seed data. The in-process spawn and fork providers pass the resolved `agentOptions` into that Agent creation call. The DSH SDK provider passes the route through its child runtime handshake. ACP, Codex, and Claude Code use product-owned model configuration and do not accept a DSH harness route override through this seam.
+The model-facing tool starts a one-shot child through `ctx.subagents.start()`. The service validates provider capabilities, snapshots the descriptor, and calls the provider's `start()` method. For a continuable child, `ctx.subagents.startContinuable()` reserves the child id and the continuation manager calls `ctx.agents.create()` (or `ctx.agents.resume()` after a cold boundary); `prepareContinuable()` contributes only provider-specific seed data. The in-process spawn and fork providers pass the resolved `agentOptions` into that Agent creation call. The DSH SDK provider passes the route through its child runtime handshake. ACP, Codex, and Claude Code use product-owned model configuration and do not accept a DSH harness route override through this seam. Their selection metadata lets the product surface route a new Session without pretending that a DSH LLM adapter controls the native product.
 
 If no child route is configured, in-process children inherit the parent's latest logged provider/model/effort, or its creation options before the first request. A Host default selected in `subagent-model-selection` replaces that inheritance for a new Agent definition and is inherited by its child Sessions. The decision is recorded as log-only session state, so a later settings edit does not retarget an already-composed delegation tree.
+
+When the Host selects a runtime through `runtimeProvider`, that provider replaces the tool row's default for the new Session and its descendants. A provider with `selection.modelAuthority: 'native'` remains responsible for its own model and reasoning effort; the shared service routes the task but does not translate DSH LLM settings into a native product configuration.
 
 ### Following up, interrupting, and discovering
 
@@ -175,6 +181,7 @@ These limits define when the seam is a poor fit or needs special operational car
 - **No replay of accepted-but-unlogged messages** — a crash can lose an accepted prompt that never reached the child's session log; the lost message is not replayed automatically.
 - **No durable report mailbox** — reports require a live direct parent and provide acceptance identity rather than exactly-once delivery.
 - **Lifecycle events are observe-only** — a run-affecting `subagent/end` continuation or decision API waits for a concrete consumer.
+- **Native runtime model settings stay outside this seam** — Codex, Claude Code, and ACP/OpenCode can be selected by registry name, but their model and reasoning-effort choices remain in the native product.
 
 <a id="dev-note"></a>
 ### Dev Note

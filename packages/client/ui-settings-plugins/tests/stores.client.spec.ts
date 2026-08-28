@@ -16,6 +16,7 @@ import { ConfigurablePluginsTabController } from '../src/client/tab-store.ts'
 import {
   SubagentModelSelectionCardController,
   subagentModelCandidates,
+  subagentRuntimeCandidates,
   type SubagentModelSelectionSettings,
 } from '../src/client/subagent-model-selection-card-controller.ts'
 import { WebSearchCardController, type WebSearchSettings } from '../src/client/web-search-card-controller.ts'
@@ -70,6 +71,20 @@ function modelsApi(options: {
       : { ok: false as const, error: { code: 'internal' as const, message: options.error, details: {} } }),
   }))
   return { api: { modelCatalog: models } as never, models }
+}
+
+function subagentsApi(providers: readonly {
+  name: string
+  label: string
+  description: string
+  kind: 'harness' | 'codex' | 'claude-code' | 'acp' | 'custom'
+  modelAuthority: 'harness' | 'native'
+}[] = []) {
+  const list = vi.fn(() => Promise.resolve({
+    ok: true as const,
+    value: { providers },
+  }))
+  return { api: { providers: list } as never, list }
 }
 
 function deferred<T>() {
@@ -446,6 +461,67 @@ describe('SubagentModelSelectionCardController', () => {
         modelName: 'old', available: false, selected: true,
       },
     ])
+  })
+
+  it('joins the registered child-runtime directory with an unavailable saved choice', () => {
+    expect(subagentRuntimeCandidates([
+      {
+        name: 'codex', label: 'Codex', description: 'Native Codex child.',
+        kind: 'codex', modelAuthority: 'native',
+      },
+    ], ['legacy'])).toEqual([
+      {
+        name: 'codex', label: 'Codex', description: 'Native Codex child.',
+        kind: 'codex', modelAuthority: 'native', available: true,
+      },
+      {
+        name: 'legacy', label: 'legacy',
+        description: 'This child runtime is saved but is not registered in the current profile.',
+        kind: 'custom', modelAuthority: 'native', available: false,
+      },
+    ])
+  })
+
+  it('loads child runtimes and saves the selected runtime with the settings draft', async () => {
+    const host = stubSettingsScope<SubagentModelSelectionSettings>()
+    acceptWrites(host)
+    const models = modelsApi()
+    const subagents = subagentsApi([{
+      name: 'codex',
+      label: 'Codex',
+      description: 'Native Codex child.',
+      kind: 'codex',
+      modelAuthority: 'native',
+    }])
+    const controller = new SubagentModelSelectionCardController(host.scope, models.api, subagents.api)
+    host.publish({
+      status: 'ready', writable: true, revision: 3,
+      value: { enabled: false, allowedModels: [] }, user: {},
+    })
+    const face = controller.inject()
+    const state = () => face.hooks.subagentModelSelectionCard.getSnapshot()
+    await vi.waitFor(() => {
+      expect(state().runtimeStatus).toBe('ready')
+      expect(state().runtimeCandidates).toHaveLength(1)
+    })
+
+    face.selectRuntimeProvider('codex')
+    expect(state()).toMatchObject({
+      runtimeProvider: 'codex',
+      runtimeAuthority: 'native',
+      runtimeLabel: 'Codex',
+      dirty: true,
+    })
+    face.save()
+    await vi.waitFor(() => {
+      expect(host.mutate).toHaveBeenCalledWith([
+        { op: 'set', path: ['runtimeProvider'], value: 'codex' },
+        { op: 'set', path: ['enabled'], value: false },
+        { op: 'set', path: ['allowedModels'], value: [] },
+      ], 3)
+    })
+    expect(subagents.list).toHaveBeenCalledOnce()
+    expect(state()).toMatchObject({ runtimeProvider: 'codex', dirty: false, failed: false })
   })
 
   it('loads adapter models and saves the switch and routes atomically', async () => {

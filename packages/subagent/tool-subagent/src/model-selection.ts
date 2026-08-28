@@ -32,7 +32,11 @@ export const SubagentModelSelectionSchema: z<SubagentModelSelection> = z.object(
   reasoningEffort: z.string().min(1),
 })
 
-/** Validate one persisted or configured automatic child route. */
+/**
+ * Validate one persisted or configured automatic child route.
+ * @param value - candidate route value from configuration or durable state.
+ * @returns an assertion that value is a validated child route.
+ */
 export function assertSubagentModelSelection(value: unknown): asserts value is SubagentModelSelection {
   if (typeof value !== 'object' || value === null || Array.isArray(value)
     || !('provider' in value) || !('model' in value)) {
@@ -45,7 +49,11 @@ export function assertSubagentModelSelection(value: unknown): asserts value is S
   }
 }
 
-/** Convert a stored automatic route into the Agent option shape used at creation. */
+/**
+ * Convert a stored automatic route into the Agent option shape used at creation.
+ * @param selection - validated provider, model, and optional effort route.
+ * @returns Agent creation options for the selected child route.
+ */
 export function agentOptionsForSubagentSelection(selection: SubagentModelSelection): AgentOptions {
   return {
     provider: selection.provider,

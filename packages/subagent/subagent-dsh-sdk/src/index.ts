@@ -132,6 +132,12 @@ function resolveSdkRoute(config: ResolvedConfig, requested: AgentOptions | undef
  * unsupported because their ownership does not cross this process boundary.
  */
 class SdkSubagentProvider implements SubagentProvider {
+  readonly selection = Object.freeze({
+    label: 'DSH SDK',
+    description: 'A fresh isolated DSH child runtime. DSH controls the child model and reasoning effort.',
+    kind: 'harness' as const,
+    modelAuthority: 'harness' as const,
+  })
   readonly capabilities = SDK_START_CAPABILITIES
   readonly agentRouteDefaults: Readonly<{ provider: string; model: string }>
   // Context contract: an out-of-process SDK child starts fresh — no parent conversation crosses the process boundary.

@@ -52,6 +52,12 @@ export function SubagentModelSelectionCard(props: SubagentModelSelectionCardProp
     : state.candidates.find(candidate => candidate.key === defaultKey)
   const reasoning = defaultCandidate?.reasoning
   const effortValue = state.defaultSelection?.reasoningEffort ?? reasoning?.defaultEffort ?? ''
+  const selectedRuntime = state.runtimeProvider === null
+    ? undefined
+    : state.runtimeCandidates.find(candidate => candidate.name === state.runtimeProvider)
+  const nativeRuntime = state.runtimeAuthority === 'native'
+  const unavailableRuntime = selectedRuntime?.available === false ? selectedRuntime : undefined
+  const runtimeDisabled = !state.writable || state.saving || state.runtimeStatus === 'loading'
   const renderCandidate = (candidate: SubagentModelCandidate) => (
     <label key={candidate.key} className={css.model}>
       <input
@@ -78,26 +84,71 @@ export function SubagentModelSelectionCard(props: SubagentModelSelectionCardProp
       onSave={props.save}
       onDiscard={props.discard}
     >
-      <div className={css.permission}>
-        <div className={css.toggleRow}>
-          <span className={css.toggleLabel}>{t('subagentModelSelectionToggle')}</span>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={state.enabled}
-            aria-label={t('subagentModelSelectionToggle')}
-            className={clsx(css.switch, state.enabled && css.switchOn)}
-            disabled={!state.writable || state.saving}
-            onClick={props.toggleEnabled}
+      <div className={css.runtimeSelection}>
+        <label className={css.field}>
+          <span className={css.fieldLabel}>{t('subagentRuntime')}</span>
+          <select
+            aria-label={t('subagentRuntime')}
+            value={state.runtimeProvider ?? ''}
+            disabled={runtimeDisabled}
+            onChange={(event) => { props.selectRuntimeProvider(event.currentTarget.value) }}
           >
-            <span className={css.thumb} />
-          </button>
-        </div>
-        <p className={css.hint}>
-          {t(state.enabled ? 'subagentModelSelectionChoose' : 'subagentModelSelectionOff')}
-        </p>
+            <option value="">{t('subagentRuntimeProfileDefault')}</option>
+            {state.runtimeCandidates.filter(candidate => candidate.available).map(candidate => (
+              <option key={candidate.name} value={candidate.name}>
+                {`${candidate.label} · ${candidate.name}`}
+              </option>
+            ))}
+            {unavailableRuntime !== undefined
+              ? (
+                <option value={unavailableRuntime.name}>
+                  {`${unavailableRuntime.label} · ${unavailableRuntime.name} (${t('subagentRuntimeUnavailable')})`}
+                </option>
+              )
+              : null}
+          </select>
+        </label>
+        {state.runtimeStatus === 'loading'
+          ? <p className={css.notice} role="status">{t('subagentRuntimeLoading')}</p>
+          : null}
+        {state.runtimeStatus === 'error'
+          ? (
+            <div className={css.catalogError} role="alert">
+              <span>{t('subagentRuntimeLoadFailed')}</span>
+              <button type="button" disabled={state.saving} onClick={props.retryCatalog}>
+                {t('subagentModelSelectionRetry')}
+              </button>
+            </div>
+          )
+          : null}
+        {nativeRuntime
+          ? <p className={css.notice}>{state.runtimeDescription ?? t('subagentRuntimeNativeNotice')}</p>
+          : null}
       </div>
-      {state.enabled
+      {!nativeRuntime
+        ? (
+          <div className={css.permission}>
+            <div className={css.toggleRow}>
+              <span className={css.toggleLabel}>{t('subagentModelSelectionToggle')}</span>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={state.enabled}
+                aria-label={t('subagentModelSelectionToggle')}
+                className={clsx(css.switch, state.enabled && css.switchOn)}
+                disabled={!state.writable || state.saving}
+                onClick={props.toggleEnabled}
+              >
+                <span className={css.thumb} />
+              </button>
+            </div>
+            <p className={css.hint}>
+              {t(state.enabled ? 'subagentModelSelectionChoose' : 'subagentModelSelectionOff')}
+            </p>
+          </div>
+        )
+        : null}
+      {state.enabled && !nativeRuntime
         ? (
           <div className={css.selection}>
             <div className={css.defaultSelection}>

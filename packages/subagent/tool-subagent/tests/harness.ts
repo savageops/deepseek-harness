@@ -28,6 +28,10 @@ let setupAgentCounter = 0
 /** Test-only opt-in translated to the real Host setting and Session path. */
 type SetupConfig = tool.Config & {
   withModelSelection?: boolean
+  /** Initial Host child-runtime selection for settings-controlled tests. */
+  runtimeProvider?: string
+  /** Optional second provider used to prove per-Agent runtime routing. */
+  additionalProvider?: mock.Config
   defaultSelection?: {
     provider: string
     model: string
@@ -47,10 +51,18 @@ const TEST_ALLOWED_MODELS = [
 
 export async function setup(toolConfig: SetupConfig, mockConfig: Partial<mock.Config> = {}): Promise<Context> {
   const ctx = new Context()
-  const { withModelSelection, defaultSelection, parentAgentOptions, ...config } = toolConfig
+  const {
+    withModelSelection,
+    runtimeProvider,
+    additionalProvider,
+    defaultSelection,
+    parentAgentOptions,
+    ...config
+  } = toolConfig
   if (withModelSelection === true) {
     await ctx.plugin(SubagentModelSelectionConfig, {
       enabled: true,
+      ...runtimeProvider === undefined ? {} : { runtimeProvider },
       ...defaultSelection === undefined ? {} : { defaultSelection },
       allowedModels: TEST_ALLOWED_MODELS,
     })
@@ -59,6 +71,7 @@ export async function setup(toolConfig: SetupConfig, mockConfig: Partial<mock.Co
     await ctx.plugin(SubagentRuntime)
     const provider = await mock.mountScriptedProvider(ctx, { name: 'mock', ...mockConfig })
     setupProviders.set(ctx, provider)
+    if (additionalProvider !== undefined) await mock.mountScriptedProvider(ctx, additionalProvider)
     const handle = await ctx.agents.create({
       sessionId: SessionId(`model-selection-setup-${++setupAgentCounter}`),
       ...parentAgentOptions !== undefined ? { agentOptions: parentAgentOptions } : {},

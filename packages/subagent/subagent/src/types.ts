@@ -91,6 +91,21 @@ export interface SubagentCapabilities {
   readonly persona: boolean
 }
 
+/** Product family used by the settings surface when it renders one child runtime. */
+export type SubagentProviderKind = 'harness' | 'codex' | 'claude-code' | 'acp' | 'custom'
+
+/** User-facing ownership contract for one registered child runtime. */
+export interface SubagentProviderSelection {
+  /** Stable display label; commands, paths, and environment values never cross this boundary. */
+  readonly label: string
+  /** Short explanation of the runtime and its model/effort authority. */
+  readonly description: string
+  /** Product family used for grouping and native-runtime copy. */
+  readonly kind: SubagentProviderKind
+  /** Whether DSH or the child product owns model and reasoning-effort selection. */
+  readonly modelAuthority: 'harness' | 'native'
+}
+
 /**
  * What a caller asks for when starting a ONE-SHOT subagent. The tool layer
  * builds this from the model's `{ description, prompt }` plus its own config;
@@ -302,6 +317,8 @@ export interface SubagentProvider {
   readonly name: string
   /** The start-time features this provider supports (see {@link SubagentCapabilities}). */
   readonly capabilities: SubagentCapabilities
+  /** Optional settings-safe identity and model-authority metadata. */
+  readonly selection?: SubagentProviderSelection
   /**
    * Whether the child sees the parent's completed-turn prefix. This is descriptive, not a
    * service-validated start capability: the model-facing tool derives truthful wording from it.

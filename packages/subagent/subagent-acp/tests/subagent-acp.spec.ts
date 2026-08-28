@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
-import { chmodSync, existsSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { PassThrough, type Readable } from 'node:stream'
@@ -1423,5 +1423,17 @@ describe('dsh-subagent-acp', () => {
     expect(unwrapped).toBe(acp)
     expect(unwrapped.name).toBe('subagent-acp')
     expect(typeof unwrapped.apply).toBe('function')
+  })
+
+  it('ships a bundle patch carrier so profile loading can compose a configured ACP instance', () => {
+    const packagePath = fileURLToPath(new URL('../package.json', import.meta.url))
+    const patchPath = fileURLToPath(new URL('../cordis.patch.yml', import.meta.url))
+    const manifest = JSON.parse(readFileSync(packagePath, 'utf8')) as {
+      files?: string[]
+      dsh?: { bundle?: { patch?: string } }
+    }
+    expect(manifest.files).toContain('cordis.patch.yml')
+    expect(manifest.dsh?.bundle?.patch).toBe('./cordis.patch.yml')
+    expect(readFileSync(patchPath, 'utf8').trimEnd()).toMatch(/\[\]$/)
   })
 })

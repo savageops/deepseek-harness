@@ -188,6 +188,7 @@
       config:
         provider: spawn
         toolName: subagent
+        runtimeSelectionSettings: true
         modelSelectionSettings: true
         backgroundMode: continuable
 

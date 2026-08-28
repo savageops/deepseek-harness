@@ -44,6 +44,8 @@ import {
 import type {
   SubagentCatalog,
   SubagentInterruptReceipt,
+  SubagentProviderCatalog,
+  SubagentProviderInfo,
   SubagentPromptReceipt,
   SubagentPromptRequest,
   SubagentPromptRequestId,
@@ -54,6 +56,7 @@ import type {
   ResolvedSubagentStartRequest,
   SubagentCapabilities,
   SubagentProvider,
+  SubagentProviderSelection,
   SubagentRun,
   SubagentRunEndInfo,
   SubagentRunInfo,
@@ -78,6 +81,29 @@ import type { SubagentDescendantListEntry, SubagentListEntry } from './list-chil
 import { snapshotSubagentDescriptor } from './descriptor.ts'
 import { subagentIdentityProjectionDefinition, subagentTimingProjectionDefinition } from './projection.ts'
 
+function providerSelection(provider: SubagentProvider): SubagentProviderSelection {
+  if (provider.selection !== undefined) return provider.selection
+  return {
+    label: provider.name,
+    description: provider.capabilities.agentOptions
+      ? 'A DSH-managed child runtime. DSH controls the child model and reasoning effort.'
+      : 'An external child runtime. The child product controls its model and reasoning effort.',
+    kind: 'custom',
+    modelAuthority: provider.capabilities.agentOptions ? 'harness' : 'native',
+  }
+}
+
+function providerInfo(provider: SubagentProvider): SubagentProviderInfo {
+  const selection = providerSelection(provider)
+  return {
+    name: provider.name,
+    label: selection.label,
+    description: selection.description,
+    kind: selection.kind,
+    modelAuthority: selection.modelAuthority,
+  }
+}
+
 export * from './out-of-process.ts'
 export { AssistantOutputFold, finalAssistantOutput } from './assistant-output.ts'
 export { SubagentRunId } from './types.ts'
@@ -86,7 +112,9 @@ export type {
   ContinuableCreateSpec,
   ResolvedSubagentStartRequest,
   SubagentCapabilities,
+  SubagentProviderKind,
   SubagentProvider,
+  SubagentProviderSelection,
   SubagentResult,
   SubagentRun,
   SubagentStartRequest,
@@ -309,7 +337,6 @@ export class SubagentRuntime extends TypertRemoteService {
    * @returns the exact Cordis effect disposer.
    */
   registerContinuableSetup(contribution: ContinuableSetupContribution): () => void {
-    // oxlint-disable-next-line typescript/no-misused-promises -- synchronous disposer
     return this.ctx.effect(
       () => this.setupRegistry.register(contribution),
       'subagents.registerContinuableSetup()',
@@ -413,6 +440,18 @@ export class SubagentRuntime extends TypertRemoteService {
   }
 
   /**
+   * Remote face of the registered child-runtime directory. Only settings-safe
+   * labels and model-authority metadata cross the browser boundary; executable
+   * commands, arguments, paths, environment, credentials, and native options
+   * remain Host-owned.
+   * @returns the currently registered child runtimes in registry order.
+   */
+  @Remote('providers')
+  remoteExportProviders(): SubagentProviderCatalog {
+    return { providers: [...this.providers.values()].map(providerInfo) }
+  }
+
+  /**
    * Deliver one browser-authored message to a continuable child through the
    * exact live direct parent, retaining the caller-minted request identity and
    * validated browser zone on the accepted message. Success identifies the
@@ -506,7 +545,6 @@ export class SubagentRuntime extends TypertRemoteService {
    */
   registerProvider(provider: SubagentProvider): () => void {
     const name = provider.name
-    // oxlint-disable-next-line typescript/no-misused-promises -- synchronous disposer
     return this.ctx.effect(function* (this: SubagentRuntime) {
       if (this.providers.has(name)) {
         throw new SubagentError(`a subagent provider named "${name}" is already registered`, 'DUPLICATE_PROVIDER')

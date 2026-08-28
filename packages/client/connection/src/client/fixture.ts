@@ -3453,6 +3453,41 @@ function createFixtureWorld(options: FixtureOptions): FixtureWorld {
           ok: true,
           value: { entries: [], parentAvailable: true },
         })
+        case 'subagents/providers': return Promise.resolve({
+          ok: true,
+          value: {
+            providers: [
+              {
+                name: 'spawn',
+                label: 'DSH Agent',
+                description: 'A fresh in-process DSH child. DSH controls the child model and reasoning effort.',
+                kind: 'harness',
+                modelAuthority: 'harness',
+              },
+              {
+                name: 'codex',
+                label: 'Codex',
+                description: 'An OpenAI Codex child runtime. Codex controls the child model and reasoning effort.',
+                kind: 'codex',
+                modelAuthority: 'native',
+              },
+              {
+                name: 'claude-code',
+                label: 'Claude Code',
+                description: 'An Anthropic Claude Code child runtime. Claude Code controls the child model and reasoning effort.',
+                kind: 'claude-code',
+                modelAuthority: 'native',
+              },
+              {
+                name: 'opencode',
+                label: 'OpenCode',
+                description: 'An OpenCode child runtime over ACP. OpenCode controls the child model and reasoning effort.',
+                kind: 'acp',
+                modelAuthority: 'native',
+              },
+            ],
+          },
+        })
         case 'subagents/prompt': return Promise.resolve({
           ok: true,
           value: {

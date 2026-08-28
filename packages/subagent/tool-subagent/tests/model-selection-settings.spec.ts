@@ -22,8 +22,10 @@ import {
   recordSubagentModelSelectionDefault,
   subagentModelSelectionDefault,
   subagentModelSelectionPolicy,
+  subagentRuntimeProviderSelection,
 } from '../src/model-selection-state.ts'
 import { text } from './harness.ts'
+import * as mock from './scripted-provider.ts'
 
 const ALLOWED_MODELS = [{ provider: 'alpha', model: 'fast-model' }]
 const DEFAULT_SELECTION = {
@@ -76,6 +78,7 @@ async function boot(): Promise<Context> {
 async function createAgent(ctx: Context, id: string, options: {
   meta?: { parentSession: SessionId; origin: 'subagent' }
   seed?: readonly SessionEvent[]
+  toolOptions?: Pick<tool.Config, 'modelSelectionSettings' | 'runtimeSelectionSettings'>
 } = {}) {
   const handle = await ctx.agents.create({
     sessionId: SessionId(id),
@@ -83,7 +86,8 @@ async function createAgent(ctx: Context, id: string, options: {
     setup: async (agentCtx) => {
       await agentCtx.plugin(tool, {
         provider: 'spawn',
-        modelSelectionSettings: true,
+        modelSelectionSettings: options.toolOptions?.modelSelectionSettings ?? true,
+        runtimeSelectionSettings: options.toolOptions?.runtimeSelectionSettings ?? false,
         backgroundMode: 'continuable',
       })
     },
@@ -111,6 +115,16 @@ describe('SubagentModelSelectionConfig', () => {
       allowedModels: ALLOWED_MODELS,
     })
     expect(ctx.subagentModelSelection.current()).toEqual({ enabled: true, allowedModels: ALLOWED_MODELS })
+    await ctx.settings.update(SUBAGENT_MODEL_SELECTION_SETTINGS_NAMESPACE, {
+      runtimeProvider: 'codex',
+      enabled: false,
+      allowedModels: [],
+    })
+    expect(ctx.subagentModelSelection.current()).toEqual({
+      runtimeProvider: 'codex',
+      enabled: false,
+      allowedModels: [],
+    })
     await ctx.fiber.dispose()
   })
 
@@ -362,6 +376,35 @@ describe('SubagentModelSelectionConfig', () => {
     const seed = Session.create(SessionId('default-seed'))
     recordSubagentModelSelectionDefault(seed, DEFAULT_SELECTION)
     expect(subagentModelSelectionDefault(seed)).toEqual(DEFAULT_SELECTION)
+    await ctx.fiber.dispose()
+  })
+
+  it('captures the selected child runtime once and inherits it in child sessions', async () => {
+    const ctx = await boot()
+    await mock.mountScriptedProvider(ctx, {
+      name: 'native',
+      capabilities: { agentOptions: false, outputSchema: false, depthLimit: false, toolFilter: false, persona: false },
+      selection: {
+        label: 'Native child',
+        description: 'A native child runtime owns model and reasoning effort.',
+        kind: 'custom',
+        modelAuthority: 'native',
+      },
+    })
+    await ctx.settings.update(SUBAGENT_MODEL_SELECTION_SETTINGS_NAMESPACE, {
+      runtimeProvider: 'native',
+    })
+    const parent = await createAgent(ctx, 'runtime-parent', {
+      toolOptions: { runtimeSelectionSettings: true, modelSelectionSettings: false },
+    })
+    expect(subagentRuntimeProviderSelection(parent.session)).toBe('native')
+
+    await ctx.settings.update(SUBAGENT_MODEL_SELECTION_SETTINGS_NAMESPACE, { runtimeProvider: undefined })
+    const child = await createAgent(ctx, 'runtime-child', {
+      meta: { parentSession: parent.id, origin: 'subagent' },
+      toolOptions: { runtimeSelectionSettings: true, modelSelectionSettings: false },
+    })
+    expect(subagentRuntimeProviderSelection(child.session)).toBe('native')
     await ctx.fiber.dispose()
   })
 

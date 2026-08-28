@@ -57,6 +57,10 @@ Removing the package withdraws the provider and its private runtime closure on t
 
 The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-subagent-codex) is the exhaustive source for every accepted field and its JSDoc. A configured `model` passes unchanged on each ephemeral `thread/start`; omission leaves native model selection in force. The provider does not discover models, rewrite aliases, select `modelProvider` or `serviceTier`, or set a fallback. Credential-shaped ambient variables are removed before the explicit `env` overlay, so an API key intended for the child must be supplied there.
 
+### Selecting this runtime from Settings
+
+The Web **Plugins → Plugin configuration → Subagent** card reads the Host's settings-safe child-runtime directory. Selecting the registered `codex` runtime routes future delegations to this provider. The selector chooses the runtime, not a cross-product model override: this provider advertises native model authority, so DSH does not apply its model-selection fields or reasoning-effort setting to Codex. Configure the Codex child model and effort in Codex itself. The provider row's optional `model` remains a deployment-level fixed override for every thread from that row.
+
 ### Exposing the tool
 
 Each delegation tool row names one provider and needs its own `toolName`, so the model sees static tools rather than a dynamic provider selector. Full Agent Presets carry a matching default tool row with `disabled: true`; copy a preset and remove that field to expose `subagent_codex` only to agents composed from the copy.
@@ -170,7 +174,7 @@ Append-only: foreground adds one result after the reusable parent prefix, while 
 These limits define when this provider is a poor fit or needs special operational care. They are current package constraints, not a general Codex comparison or a task backlog.
 
 - **One fresh process, thread, and turn per run** — there is no continuation, resume, pooling, progress stream, or product-session persistence.
-- **Static instance selection** — Profile rows fix provider names, optional models, and tool bindings; calls cannot choose or change either a provider or model dynamically, and every exposed tool needs a unique `toolName`.
+- **Static instance configuration** — Profile rows fix provider names, optional models, and tool bindings; the Web runtime selector can choose among registered provider instances for future calls, but it cannot change Codex's native model or effort settings, and every exposed tool needs a unique `toolName`.
 - **Authentication and account state remain native** — the Bundle supplies the CLI but does not create an account, log in, trust a project, or rewrite Codex settings; configuration and authentication failures surface with their lifecycle stage and the safe `unknown` fallback rather than a separate public taxonomy.
 - **The native platform payload is required at delegation time** — installs that omit optional dependencies, unsupported platforms, and missing or damaged payloads fail at the first run; there is no host-CLI fallback.
 - **Compatibility is pinned by development evidence** — upgrading from the verified 0.149.1 protocol baseline requires regenerating upstream schema evidence and rerunning handshake, answer-selection, approval, cancellation, keyless real-product, and credentialed DeepSeek nonce tests.

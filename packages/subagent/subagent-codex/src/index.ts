@@ -61,6 +61,12 @@ export const Config: z<Config> = z.object({
 type ResolvedConfig = Omit<Required<Config>, 'model'> & Pick<Config, 'model'>
 
 class CodexProvider implements SubagentProvider {
+  readonly selection = Object.freeze({
+    label: 'Codex',
+    description: 'A fresh native Codex child. Codex controls the child model and reasoning effort.',
+    kind: 'codex' as const,
+    modelAuthority: 'native' as const,
+  })
   readonly capabilities: SubagentCapabilities = NO_START_CAPABILITIES
   readonly inheritsParentContext = false
 

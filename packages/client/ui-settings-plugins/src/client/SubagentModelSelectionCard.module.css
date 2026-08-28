@@ -4,6 +4,14 @@
   padding: 12px 0;
 }
 
+.runtimeSelection {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+}
+
 .toggleRow {
   display: flex;
   align-items: flex-start;

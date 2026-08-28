@@ -8,6 +8,12 @@ Service Definition：[dsh-subagent](../../packages/subagent/subagent)（`ctx.sub
 
 源码：[`packages/subagent/subagent/src/types.ts`](../../packages/subagent/subagent/src/types.ts)、[`packages/subagent/subagent/src/index.ts`](../../packages/subagent/subagent/src/index.ts)和 [`packages/subagent/subagent/src/continuation.ts`](../../packages/subagent/subagent/src/continuation.ts)
 
+## 运行时目录与模型所有权
+
+`SubagentProvider.selection` 是某个已注册提供方可选的 settings-safe 身份信息。它包含面向用户的标签、简短描述、产品类型与 `modelAuthority`：`harness` 表示由 DSH 负责子级模型与推理强度选择；`native` 表示由子产品负责。未提供显式元数据的提供方会根据自身能力描述符得到派生身份，因此设置界面无需检查可执行配置。
+
+`SubagentRuntime.remoteExportProviders()` 向浏览器返回 `SubagentProviderCatalog`。每个 `SubagentProviderInfo` 只包含注册名称与四个选择字段。命令、参数、工作目录、环境值、凭据、原生选项与提供方实例仍留在 Host。Web Plugins 卡把所选提供方名称保存为 `runtimeProvider`；委派工具用它为之后组合的子 Agent 选择提供方，并对原生提供方拒绝 DSH 模型／强度路由字段，而不是假装原生产品接受了这些字段。
+
 ## 两类能力，两种发现方式
 
 提供方通过一个静态描述符公布其**启动时**功能，服务会在单次 run 存在之前即行检查；如果请求依赖提供方不具备的功能，会被明确拒绝（`SubagentError('UNSUPPORTED_CAPABILITY')`），绝不会被接受后静默忽略。这些 flag 仅描述单次 [`start()`](#the-provider-contract-subagentprovider) 路径，即由提供方组合子 agent 的路径。**可继续**子 agent 由继续执行管理器自行组合，因此它们由唯一一个可选方法把关，方法存在即为能力，并以 TypeScript 的类型收窄作为发现机制：[`SubagentProvider.prepareContinuable`](#the-provider-contract-subagentprovider)。
@@ -424,7 +430,7 @@ interface SubagentRun {
 
 ## 提供方约定：`SubagentProvider`
 
-每个提供方都是一个具名的子 agent 传输层，多个提供方可以共存。服务在 `start()` 之前校验请求的启动时能力，并拒绝在没有 `prepareContinuable` 的提供方上发起可继续 start。`inheritsParentContext` 仅描述对话种子注入（`fork`：true；`spawn` 和 `acp`：false），使消费方能生成准确的面向模型措辞，而不暗示继承了工具、服务或权限。如果某个提供方的一次性路由拥有静态的提供方自有默认值，它会公开可选且不可变的 `agentRouteDefaults`，使 Consumer 能够在预检前以正确基线合并模型与工具覆盖。
+每个提供方都是一个具名的子 agent 传输层，多个提供方可以共存。服务在 `start()` 之前校验请求的启动时能力，并拒绝在没有 `prepareContinuable` 的提供方上发起可继续 start。`selection` 描述设置侧身份与模型所有权；它不授予调用方可执行访问，也不改变传输能力。`inheritsParentContext` 仅描述对话种子注入（`fork`：true；`spawn` 和 `acp`：false），使消费方能生成准确的面向模型措辞，而不暗示继承了工具、服务或权限。如果某个提供方的一次性路由拥有静态的提供方自有默认值，它会公开可选且不可变的 `agentRouteDefaults`，使 Consumer 能够在预检前以正确基线合并模型与工具覆盖。
 
 ```ts type-equiv
 /**
@@ -440,6 +446,8 @@ interface SubagentProvider {
   readonly name: string
   /** The start-time features this provider supports (see {@link SubagentCapabilities}). */
   readonly capabilities: SubagentCapabilities
+  /** Optional settings-safe identity and model-authority metadata. */
+  readonly selection?: SubagentProviderSelection
   /**
    * Whether the child sees the parent's completed-turn prefix. This is descriptive, not a
    * service-validated start capability: the model-facing tool derives truthful wording from it.
@@ -666,6 +674,15 @@ listDescendants(rootSessionId: SessionId, signal?: AbortSignal): Promise<Subagen
  *   the deployment has no projection registry, otherwise `internal`.
  */
 @Remote('list') async remoteExportList(parentSessionId: SessionId, signal: AbortSignal): Promise<SubagentCatalog>
+
+/**
+ * Remote face of the registered child-runtime directory. Only settings-safe
+ * labels and model-authority metadata cross the browser boundary; executable
+ * commands, arguments, paths, environment, credentials, and native options
+ * remain Host-owned.
+ * @returns the currently registered child runtimes in registry order.
+ */
+@Remote('providers') remoteExportProviders(): SubagentProviderCatalog
 
 /**
  * Deliver one browser-authored message to a continuable child through the

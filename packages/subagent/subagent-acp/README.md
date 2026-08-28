@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`dsh-subagent-acp` runs each delegated child in a fresh subprocess and drives it as an Agent Client Protocol client: the child gets its own runtime, session, model configuration, and tools, and it can be any ACP-compatible agent, not just Harness. It is the out-of-process alternative to the in-process spawn and fork backends, sharing only the parent session's working directory with the child. Each run spawns a fresh process, initializes an ACP session, sends the task, and collects the streamed final answer; permission prompts are auto-answered by configuration, so no human is needed. The parent receives only the child's final answer or a safe error — no intermediate messages or tool traffic crosses the boundary. Choose it when the child must be fully isolated from the parent harness and can speak ACP.
+`dsh-subagent-acp` runs each delegated child in a fresh subprocess and drives it as an Agent Client Protocol client: the child gets its own runtime, session, model configuration, and tools, and it can be any ACP-compatible agent, not just Harness. It is the out-of-process alternative to the in-process spawn and fork backends, sharing only the parent session's working directory with the child. Each run spawns a fresh process, initializes an ACP session, sends the task, and collects the streamed final answer; permission prompts are auto-answered by configuration, so no human is needed. The parent receives only the child's final answer or a safe error — no intermediate messages or tool traffic crosses the boundary. Choose it when the child must be fully isolated from the parent harness and can speak ACP. The provider advertises native model authority, so the web child-runtime selector can route to it while the ACP product — for example OpenCode — keeps model and effort configuration.
 
 ## Table of Contents
 
@@ -36,6 +36,8 @@ Choose this backend when the child must run with its own runtime, model, and too
 | Field | Default | Meaning |
 |---|---|---|
 | `providerName` | `acp` | Registry name on `ctx.subagents` |
+| `label` | `ACP agent` | Settings label for this registered runtime |
+| `description` | `An external ACP child. The child product controls the model and reasoning effort.` | Settings explanation shown for this runtime |
 | `command` | required | Executable spawned for each run (the child ACP agent) |
 | `args` | `[]` | Command arguments |
 | `cwd` | parent session cwd | Working-directory override for the child process and its ACP session |
@@ -45,6 +47,8 @@ Choose this backend when the child must run with its own runtime, model, and too
 | `disposeGraceMs` | `3000` | Bound for observing structured process facts after failure and, on POSIX, the SIGTERM-to-SIGKILL grace |
 
 The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-subagent-acp) is the exhaustive source for every accepted field and its JSDoc.
+
+The package ships an empty `dsh.bundle` patch carrier. A generic ACP provider cannot choose a safe command, environment, or product policy by itself; a profile must insert a configured instance. The carrier makes the package valid for profile loading while keeping executable configuration in the consuming profile.
 
 A DeepSeek Harness child uses the product launcher and an explicit absolute `DSH_HOME`. The isolated home prevents a nested runtime from discovering the launching person's profiles or credentials; the generic ACP provider does not impose this requirement on non-DSH agents.
 
@@ -60,6 +64,24 @@ A DeepSeek Harness child uses the product launcher and an explicit absolute `DSH
       DSH_HOME: /absolute/path/to/isolated-child-home
       DEEPSEEK_API_KEY: !!js process.env.DEEPSEEK_API_KEY
 ```
+
+### OpenCode over ACP
+
+OpenCode exposes an ACP command as `opencode acp`. The web profile composes it as a named native runtime so the subagent settings card can select **OpenCode**:
+
+```yaml
+- id: subagent-acp-opencode
+  name: '@deepseek-ai/dsh-subagent-acp'
+  config:
+    providerName: opencode
+    label: OpenCode
+    description: OpenCode child runtime over ACP; OpenCode owns model and reasoning effort selection.
+    command: opencode
+    args: [acp]
+    permission: reject
+```
+
+Configure OpenCode's provider, model, and variant in its own product configuration. DSH passes the selected Session workspace through ACP; it does not inject DSH LLM route fields into OpenCode. See the [OpenCode ACP documentation](https://opencode.ai/docs/acp/) for the native command and the [OpenCode configuration documentation](https://opencode.ai/docs/config/) for product-owned settings.
 
 ### What you get
 
@@ -161,6 +183,7 @@ These limits define when this backend is a poor fit or needs special operational
 - **No optional start-time capabilities** — this provider cannot apply `agentOptions`, `outputSchema`, a depth cap, a tool filter, or a persona inside the remote process, so the seam rejects requests that require them.
 - **Only committed `agent_message_chunk` text is collected** — the automation server keeps reasoning, tool activity, plans, and other trace data in the child session log rather than emitting them on ACP.
 - **Permission prompts are auto-answered** (`permission: allow | reject`) — no human is surfaced a child's `session/request_permission`.
+- **Native model configuration stays with the child product** — the runtime selector can choose an ACP instance such as OpenCode, but this provider does not expose DSH `provider`, `model`, or `reasoning_effort` overrides.
 
 <a id="dev-note"></a>
 ### Dev Note

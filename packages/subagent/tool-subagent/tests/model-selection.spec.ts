@@ -16,6 +16,7 @@ import {
   preflightChildLlmRoute,
 } from '../src/model-selection.ts'
 import { callSubagent, modelSelectionSetupAgent, setup, text } from './harness.ts'
+import { subagentRuntimeProviderSelection } from '../src/model-selection-state.ts'
 
 const REASONING = {
   efforts: [
@@ -202,6 +203,58 @@ describe('dsh-tool-subagent model selection', () => {
     })
     expect(result.isError).toBe(true)
     expect(text(result)).toContain('child model selection is disabled for this tool instance')
+  })
+
+  it('routes a Session to a native child runtime and leaves model and effort ownership there', async () => {
+    const nativeRequests: SubagentStartRequest[] = []
+    const ctx = await setup({
+      provider: 'mock',
+      withModelSelection: true,
+      runtimeSelectionSettings: true,
+      runtimeProvider: 'native',
+      backgroundMode: 'one-shot',
+      additionalProvider: {
+        name: 'native',
+        capabilities: { agentOptions: false, outputSchema: false, depthLimit: false, toolFilter: false, persona: false },
+        selection: {
+          label: 'Native child',
+          description: 'A native child runtime owns model and reasoning effort.',
+          kind: 'custom',
+          modelAuthority: 'native',
+        },
+        onStart: (request) => { nativeRequests.push(request) },
+      },
+    })
+    const agent = modelSelectionSetupAgent(ctx)
+    expect(subagentRuntimeProviderSelection(agent.session)).toBe('native')
+
+    const schema = ctx.tools.schemas(agent).find(entry => entry.name === 'subagent')!
+    const props = (schema.parameters as { properties?: Record<string, unknown> }).properties ?? {}
+    expect(Object.keys(props).sort()).toEqual(['description', 'prompt', 'run_in_background'])
+    expect(ctx.tools.get('list_subagent_models', agent)).toBeUndefined()
+    expect(schema.description).toContain('native product')
+
+    const rejected = await callSubagent(ctx, {
+      description: 'native route',
+      prompt: 'do it',
+      provider: 'alpha',
+      model: 'fast-model',
+      reasoning_effort: 'low',
+      run_in_background: false,
+    })
+    expect(rejected.isError).toBe(true)
+    expect(text(rejected)).toContain('owns model selection')
+    expect(nativeRequests).toHaveLength(0)
+
+    const result = await callSubagent(ctx, {
+      description: 'native child',
+      prompt: 'do it',
+      run_in_background: false,
+    })
+    expect(result.isError).toBe(false)
+    expect(nativeRequests).toHaveLength(1)
+    expect(nativeRequests[0]).not.toHaveProperty('agentOptions')
+    await ctx.fiber.dispose()
   })
 
   it('rejects enabled model selection when the provider cannot apply Agent options', async () => {

@@ -89,6 +89,10 @@ function renderBash(state: Partial<BashCardState> = {}) {
 function renderSubagentModelSelection(state: Partial<SubagentModelSelectionCardState> = {}) {
   const store = createSnapshotStore<SubagentModelSelectionCardState>({
     ...settled,
+    runtimeProvider: null,
+    runtimeCandidates: [],
+    runtimeStatus: 'ready',
+    runtimeAuthority: 'harness',
     enabled: false,
     defaultSelection: null,
     candidates: [],
@@ -98,6 +102,7 @@ function renderSubagentModelSelection(state: Partial<SubagentModelSelectionCardS
     ...state,
   })
   const actions = {
+    selectRuntimeProvider: vi.fn(),
     toggleEnabled: vi.fn(),
     toggleModel: vi.fn(),
     selectDefaultModel: vi.fn(),
@@ -364,6 +369,35 @@ describe('SubagentModelSelectionCard', () => {
     fireEvent.click(control)
 
     expect(actions.toggleEnabled).toHaveBeenCalledOnce()
+  })
+
+  it('shows the native-runtime boundary and hides DSH model controls for a native choice', () => {
+    const actions = renderSubagentModelSelection({
+      runtimeProvider: 'codex',
+      runtimeCandidates: [{
+        name: 'codex',
+        label: 'Codex',
+        description: 'Native Codex child.',
+        kind: 'codex',
+        modelAuthority: 'native',
+        available: true,
+      }],
+      runtimeAuthority: 'native',
+      runtimeLabel: 'Codex',
+      runtimeDescription: 'Native Codex child.',
+      enabled: true,
+      defaultSelection: { provider: 'alpha', model: 'fast', reasoningEffort: 'high' },
+      catalogStatus: 'ready',
+    })
+    fireEvent.click(screen.getByText(en.subagentModelSelectionTitle))
+
+    const runtime = screen.getByLabelText(en.subagentRuntime) as HTMLSelectElement
+    expect(runtime.value).toBe('codex')
+    expect(screen.getByText('Native Codex child.')).toBeTruthy()
+    expect(screen.queryByRole('switch')).toBeNull()
+    expect(screen.queryByLabelText(en.subagentModelSelectionDefault)).toBeNull()
+    fireEvent.change(runtime, { target: { value: '' } })
+    expect(actions.selectRuntimeProvider).toHaveBeenCalledWith('')
   })
 
   it('groups available adapter candidates by provider', () => {

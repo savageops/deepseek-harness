@@ -12,6 +12,9 @@ export type PluginsSettingsLocaleKey =
   | 'webSearchApiKey' | 'webSearchApiKeyHint' | 'webSearchApiKeySet' | 'webSearchApiKeyUnset'
   | 'webSearchBaseUrl' | 'webSearchBaseUrlHint' | 'webSearchMaxUses' | 'webSearchMaxUsesHint'
   | 'subagentModelSelectionTitle' | 'subagentModelSelectionDescription'
+  | 'subagentRuntime' | 'subagentRuntimeProfileDefault' | 'subagentRuntimeLoading'
+  | 'subagentRuntimeLoadFailed' | 'subagentRuntimeNativeNotice' | 'subagentRuntimeNativeHint'
+  | 'subagentRuntimeUnavailable'
   | 'subagentModelSelectionToggle' | 'subagentModelSelectionChoose' | 'subagentModelSelectionDefault'
   | 'subagentModelSelectionUseParent' | 'subagentModelSelectionEffort'
   | 'subagentModelSelectionProviderDefault' | 'subagentModelSelectionAllowed'
@@ -60,7 +63,14 @@ export const en: Record<PluginsSettingsLocaleKey, string> = {
   webSearchMaxUses: 'Max searches per request',
   webSearchMaxUsesHint: 'How many times one request may search before it must answer.',
   subagentModelSelectionTitle: 'Subagent',
-  subagentModelSelectionDescription: 'Choose the model and reasoning effort used by subagents.',
+  subagentModelSelectionDescription: 'Choose the child runtime, model, and reasoning effort used by subagents.',
+  subagentRuntime: 'Child runtime',
+  subagentRuntimeProfileDefault: 'Profile default (DSH Agent)',
+  subagentRuntimeLoading: 'Loading child runtimes…',
+  subagentRuntimeLoadFailed: 'Child runtimes could not be loaded.',
+  subagentRuntimeNativeNotice: 'This runtime owns the child model and reasoning effort. Configure those values in the native product; DSH model settings are not applied.',
+  subagentRuntimeNativeHint: 'The selected native runtime owns the child model and reasoning effort.',
+  subagentRuntimeUnavailable: 'Currently unavailable',
   subagentModelSelectionToggle: 'Use a dedicated model for subagents',
   subagentModelSelectionChoose: 'When enabled, new subagents use the selected provider, model, and reasoning effort. Optional per-call model choices remain separately authorized. Applies only to new sessions.',
   subagentModelSelectionDefault: 'Default subagent model',
@@ -120,7 +130,14 @@ export const zh: Record<PluginsSettingsLocaleKey, string> = {
   webSearchMaxUses: '单次请求最多搜索次数',
   webSearchMaxUsesHint: '一次请求在必须作答前最多可以搜索多少次。',
   subagentModelSelectionTitle: 'Subagent',
-  subagentModelSelectionDescription: '选择 Subagent 使用的模型和推理强度。',
+  subagentModelSelectionDescription: '选择 Subagent 使用的子运行时、模型和推理强度。',
+  subagentRuntime: '子运行时',
+  subagentRuntimeProfileDefault: '配置文件默认值（DSH Agent）',
+  subagentRuntimeLoading: '正在加载子运行时…',
+  subagentRuntimeLoadFailed: '无法加载子运行时。',
+  subagentRuntimeNativeNotice: '当前运行时由原生产品负责选择子 Agent 的模型和推理强度。请在对应产品中配置；DSH 的模型设置不会应用。',
+  subagentRuntimeNativeHint: '当前选中的原生运行时负责选择子 Agent 的模型和推理强度。',
+  subagentRuntimeUnavailable: '当前不可用',
   subagentModelSelectionToggle: '为 Subagent 使用专用模型',
   subagentModelSelectionChoose: '开启后，新建 Subagent 使用所选提供方、模型和推理强度。每次调用的可选模型仍单独授权。仅影响新会话。',
   subagentModelSelectionDefault: 'Subagent 默认模型',

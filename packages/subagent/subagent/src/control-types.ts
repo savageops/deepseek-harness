@@ -11,6 +11,26 @@ import type { MessageId } from '@deepseek-ai/dsh-llm/brand'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm/types'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { z as zCore } from 'zod'
+import type { SubagentProviderKind } from './types.ts'
+
+/** Settings-safe description of one child runtime registered in the Host. */
+export interface SubagentProviderInfo {
+  /** Registry name accepted by the delegation tool. */
+  readonly name: string
+  /** User-facing label. */
+  readonly label: string
+  /** Short runtime and model-authority explanation. */
+  readonly description: string
+  /** Product family used for settings grouping and copy. */
+  readonly kind: SubagentProviderKind
+  /** Whether DSH or the child product owns model and reasoning-effort selection. */
+  readonly modelAuthority: 'harness' | 'native'
+}
+
+/** Current child-runtime directory returned to the browser settings surface. */
+export interface SubagentProviderCatalog {
+  readonly providers: readonly SubagentProviderInfo[]
+}
 
 /**
  * Client-minted identity of one browser prompt, persisted on the exact accepted

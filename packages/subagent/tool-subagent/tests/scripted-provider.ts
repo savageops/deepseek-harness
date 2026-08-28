@@ -6,6 +6,7 @@ import { SessionId } from '@deepseek-ai/dsh-session'
 import type {
   SubagentCapabilities,
   SubagentProvider,
+  SubagentProviderSelection,
   SubagentResult,
   SubagentRun,
   SubagentStartRequest,
@@ -36,6 +37,8 @@ export interface Config {
   inheritsParentContext?: boolean
   /** Provider-owned child route defaults. */
   agentRouteDefaults?: Readonly<{ provider: string; model: string }>
+  /** Settings-safe runtime identity and model-authority metadata. */
+  selection?: SubagentProviderSelection
   /** Structured value returned when the request asks for one. */
   structured?: unknown
   /** Observes each start; the child's result additionally waits for the returned promise. */
@@ -46,6 +49,7 @@ export interface Config {
 class ScriptedSubagentProvider implements SubagentProvider {
   readonly capabilities: SubagentCapabilities
   readonly inheritsParentContext: boolean
+  readonly selection?: SubagentProviderSelection
 
   constructor(
     readonly name: string,
@@ -53,6 +57,7 @@ class ScriptedSubagentProvider implements SubagentProvider {
   ) {
     this.capabilities = { ...DEFAULT_CAPABILITIES, ...config.capabilities }
     this.inheritsParentContext = config.inheritsParentContext ?? false
+    if (config.selection !== undefined) this.selection = config.selection
   }
 
   async start(request: SubagentStartRequest): Promise<SubagentRun> {

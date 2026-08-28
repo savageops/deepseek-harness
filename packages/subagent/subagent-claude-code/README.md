@@ -59,6 +59,10 @@ Removing the package withdraws the provider and its private runtime closure on t
 
 The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-subagent-claude-code) is the exhaustive source for every accepted field and its JSDoc. A configured `model` passes unchanged to every query from that provider instance; omission leaves native model selection in force. Credential-shaped ambient variables are removed before the explicit `env` overlay, so an API key intended for the child must be supplied there. The provider omits the SDK `settingSources` option, so Claude Code reads the host's normal user, project, and local settings relative to the parent Session cwd. It does not copy or filter those files, create or modify login state, inspect `PATH`, or fall back to a host `claude` executable.
 
+### Selecting this runtime from Settings
+
+The Web **Plugins → Plugin configuration → Subagent** card reads the Host's settings-safe child-runtime directory. Selecting the registered `claude-code` runtime routes future delegations to this provider. The selector chooses the runtime, not a cross-product model override: this provider advertises native model authority, so DSH does not apply its model-selection fields or reasoning-effort setting to Claude Code. Configure the Claude Code child model and effort in Claude Code itself. The provider row's optional `model` remains a deployment-level fixed override for every query from that row.
+
 ### Exposing the tool
 
 Each delegation tool row names one provider and needs its own `toolName`, so the model sees static tools rather than a dynamic provider selector. Full Agent Presets carry a matching default tool row with `disabled: true`; copy a preset and remove that field to expose `subagent_claude_code` only to agents composed from the copy.
@@ -172,7 +176,7 @@ Append-only: foreground adds one result after the reusable parent prefix, while 
 These limits define when this provider is a poor fit or needs special operational care. They are current package constraints, not a general Claude Code comparison or a task backlog.
 
 - **One fresh query and process per run** — there is no continuation, resume, pooling, progress stream, or product-session persistence.
-- **Static instance selection** — Profile rows fix provider names, optional models, and tool bindings; calls cannot choose or change either a provider or model dynamically, and every exposed tool needs a unique `toolName`.
+- **Static instance configuration** — Profile rows fix provider names, optional models, and tool bindings; the Web runtime selector can choose among registered provider instances for future calls, but it cannot change Claude Code's native model or effort settings, and every exposed tool needs a unique `toolName`.
 - **Host settings are intentionally authoritative** — when `model` is omitted, project and user settings choose it; native settings always retain the remaining tools and behavior, and the provider does not provide a filtered or hermetic production mode.
 - **Authentication and account state remain native** — the Bundle supplies the CLI but does not create an account, log in, or rewrite Claude settings; configuration and authentication failures surface with their lifecycle stage and the safe `unknown` fallback rather than a separate public classification.
 - **The SDK platform payload is required at delegation time** — installs that omit optional dependencies, unsupported platforms, and missing or damaged payloads fail at the first query; there is no host-CLI fallback.

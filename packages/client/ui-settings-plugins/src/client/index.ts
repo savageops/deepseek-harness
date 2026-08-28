@@ -54,7 +54,7 @@ const NS = 'settings.plugins'
 
 /** Required services (cordis fiber inject). */
 export const inject = [
-  'slots', 'locale', 'connection', 'remote', 'remote.credentials', 'remote.session', 'settingsScope',
+  'slots', 'locale', 'connection', 'remote', 'remote.credentials', 'remote.session', 'remote.subagents', 'settingsScope',
 ]
 
 /**
@@ -72,6 +72,7 @@ export function apply(ctx: ClientContext): void {
   const subagentModelSelection = new SubagentModelSelectionCardController(
     ctx.settingsScope.bind({ namespace: SUBAGENT_MODEL_SELECTION_NS }),
     ctx.remote.session,
+    ctx.remote.subagents,
   )
 
   // The credential a card reports is not part of any settings section, so its

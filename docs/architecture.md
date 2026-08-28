@@ -57,6 +57,7 @@ Here are some core packages that contribute to the Cordis tree.
 | [`core/tools`](subsystems/tools.md) | The scoped tool registry and guarded execution pipeline | `ctx.tools` |
 | [`core/agent`](subsystems/core.md) | The `Agent` interface, live registry, and `agent/*` events | `ctx.agents` |
 | [`core/agent-loop`](subsystems/core.md) | The default driver implementing that interface | `ctx.agentLoop` |
+| [`subagent/subagent`](subsystems/subagent.md) | Named child-runtime providers and settings-safe runtime discovery | `ctx.subagents` |
 | [`core/scope`](subsystems/scope.md) | The per-agent scoped-registration primitive | library, no key |
 | [`llm/llm`](subsystems/llm-streaming.md) | Message and stream vocabulary plus the adapter seam | `ctx.llm` |
 | [`webhook/webhook`](subsystems/webhook.md) | Authenticated-delivery dispatch and Workspace Session creation | `ctx.webhookRuntime` |
@@ -111,6 +112,8 @@ The session log is the source of the context the model sees. `deriveMessages()` 
 A **seam** is a swappable capability with three roles: a **Service Definition** declaring the interface, a **Service Provider** implementing it, and a **Consumer** using it, commonly a model-facing tool. A package may combine roles, but one role alone is not a seam; adding a capability means designing all three ([capability graph](capability-seams.md)).
 
 Seams are why one provider swap changes the whole product. Filesystem and subprocess providers share one execution world, so pointing them at a remote sandbox moves Bash, PTY, and LSP with them, with no provider forks. [Subagent providers](subsystems/subagent.md) vary just as widely behind one interface, from a fresh child agent to a delegated turn in another product.
+
+Subagent runtime choice has two owners. The Host's `ctx.subagents.providers` remote exposes only settings-safe provider identity and model authority; the Plugins settings card persists the selected `runtimeProvider`. DSH-managed providers use the DSH model and effort controls, while Codex, Claude Code, and ACP/OpenCode remain native runtimes whose model and effort settings stay in the child product. Profile composition owns commands, arguments, policies, credentials, and other executable configuration.
 
 [Experimental Agent Teams](subsystems/agent-team.md) is a private opt-in coordination seam on `ctx.agentTeams`, with a durable roster, task board, and mailbox layered over continuable subagents.
 

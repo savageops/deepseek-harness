@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-`dsh-tool-subagent` 是面向模型的委派工具：它把一个已配置的 `ctx.subagents` 提供方变成 agent 可以调用来启动子 agent（智能体）的工具。更换提供方只会改变传输，不会改变执行约定，因此一个组合可以暴露多个委派工具，各自绑定不同的后端。`one-shot` 策略下，调用默认在前台等待子 agent；`continuable` 策略下，调用默认在后台启动工作，并返回模型之后可以发消息的持久化子 agent id。合适的实例还可让模型发现并选择子 agent 的 LLM 提供方、模型与推理等级。工具的描述会随子 agent 是否继承父级已完成轮次而调整，失败的运行以出错的工具结果呈现，而非部分成功。
+`dsh-tool-subagent` 是面向模型的委派工具：它把一个已配置的 `ctx.subagents` 提供方变成 agent 可以调用来启动子 agent（智能体）的工具。更换提供方只会改变传输，不会改变执行约定，因此一个组合可以暴露多个委派工具，各自绑定不同的后端。`one-shot` 策略下，调用默认在前台等待子 agent；`continuable` 策略下，调用默认在后台启动工作，并返回模型之后可以发消息的持久化子 agent id。启用设置的实例可以为每个新 Session 选择子运行时；当所选运行时支持时，还可以使用 DSH 自有的子级 LLM 提供方、模型与推理等级控制。原生 Codex、Claude Code 与 ACP 运行时在各自产品中保留模型和推理等级所有权。工具的描述会随子 agent 是否继承父级已完成轮次而调整，失败的运行以出错的工具结果呈现，而非部分成功。
 
 ## 目录
 
@@ -44,6 +44,7 @@ kind: "package-reference"
 |---|---|---|
 | `provider` | 必填 | `ctx.subagents` 上的提供方名称（如 `spawn`、`fork`、`acp`） |
 | `toolName` | `subagent` | 面向模型的工具名称；每个已加载实例必须不同 |
+| `runtimeSelectionSettings` | `false` | 为每个新顶层 Session 读取宿主选择的子运行时提供方；原生运行时自行负责模型和推理等级 |
 | `modelSelectionSettings` | `false` | 为每个新顶层 Session 读取宿主的默认子级路由与可选的逐调用路由列表；只在 Agent 作用域内有效，并要求提供方支持 `agentOptions` |
 | `enableRunInBackground` | `true` | 公开 `run_in_background`；禁用时也会拒绝强制后台调用 |
 | `backgroundMode` | `one-shot` | 后台策略：`one-shot` 默认前台调用；`continuable` 默认后台调用，并要求提供方具备 `prepareContinuable` 能力 |
@@ -60,11 +61,15 @@ kind: "package-reference"
 
 `continuable` 策略下，省略或为 `true` 的 `run_in_background` 会启动一个持久化子 agent，并返回 `started subagent <childId>`，不等待结果；子 agent 的 Activation 结束时，运行时投递一条结算通知，可选的 `send_message` 工具会向它发送更多工作。把 `run_in_background` 设为 `false` 可在前台等待结果。
 
+启用 `runtimeSelectionSettings: true` 后，每个新 Session 会读取宿主 `subagent-model-selection.runtimeProvider`，并把这个工具实例绑定到已注册的子运行时。设置为空时使用配置文件中的 `provider`。如果选中的是 Codex、Claude Code 或 ACP/OpenCode 这类原生一次性产品，即使配置文件的工具行请求 `backgroundMode: continuable`，工具也会使用一次性启动路径；显式传入 `run_in_background: true` 时使用通用任务层，因为原生运行时没有可继续子会话约定。原生运行时负责自己的进程和协议，所以模型与推理等级必须在原生产品中配置。
+
 `maxDepth` 限制递归深度（默认 `3`；`0` 禁止委派），并要求提供方具备 `depthLimit` 能力；`'provider-managed'` 把预算留给进程外提供方。当提供方支持时，`persona` 与 `toolFilter` 会配置每个子 agent；工具在达到上限时仍然可见——每次尝试启动都会检查调用 agent 的当前深度，被拒绝时返回出错的工具结果。
 
-### 选择子级 LLM
+### 选择子运行时与 LLM
 
-设置 `modelSelectionSettings: true`，即可在组合每个顶层 Session 时读取宿主的 `subagent-model-selection` 偏好。该设置包含一个自动使用的 `defaultSelection`（`provider`、`model` 与可选的 `reasoningEffort`），以及供模型逐调用选择的可选 `allowedModels` 列表。默认路由应用于省略路由字段的委派调用；只有 Session 携带允许列表时，显式路由才会覆盖它。采样决定会记录进 Session、由子 Session 继承，后续设置编辑不会改变它。工具随后仅在存在允许列表时公开 `provider`、`model` 与 `reasoning_effort` 字段，并注册共享的 `list_subagent_models` 工具。此模式要求后端声明 `agentOptions`；两个进程内后端和 DSH SDK 支持该能力，而 ACP、Codex 与 Claude Code 保留各自产品的模型控制，并拒绝 DSH harness 路由覆盖。
+设置 `runtimeSelectionSettings: true`，即可在组合每个顶层 Session 时读取宿主的 `subagent-model-selection.runtimeProvider`。运行时目录只返回已注册提供方的名称、标签、产品类型和模型所有权元数据。采样决定会记录进 Session、由子 Session 继承，后续设置编辑不会改变它。设置为空时使用配置文件的 `provider`。
+
+设置 `modelSelectionSettings: true`，即可在组合每个顶层 Session 时读取宿主的 DSH 子级 LLM 偏好。该设置包含一个自动使用的 `defaultSelection`（`provider`、`model` 与可选的 `reasoningEffort`），以及供模型逐调用选择的可选 `allowedModels` 列表。默认路由应用于省略路由字段的委派调用；只有 Session 携带允许列表时，显式路由才会覆盖它。只有当所选运行时声明 `agentOptions`，且其元数据声明由 DSH 负责模型所有权时，这些控制才会生效。两个进程内后端和 DSH SDK 支持该能力；ACP、Codex、Claude Code 以及通过 ACP 配置的 OpenCode 保留各自产品的模型控制，面向模型的路由字段和 `list_subagent_models` 会被省略，注入的 harness 路由会被拒绝而不是静默忽略。
 
 在设置页面中，选择按提供方分组的模型，再从该模型的实时目录选择推理等级；模型有公布的默认等级时，选择模型会记录它。一次调用需同时提供 `provider` 与 `model`；当配置值、父 agent 值或提供方持有的默认值能提供路由时，也可只提供推理等级。静态的 `provider.agentRouteDefaults` 在存在时构成提供方／模型基线；工具配置与模型字段会在路由相关强度合并和确切路由预检前覆盖它。没有这些默认值的提供方会使用父 agent 最新已记录请求中的兼容值，再使用父级首次请求前的创建选项，并保留配置的 `maxTokens`。更改路由但未显式提供推理等级时，会清除继承的路由自有等级，使所选模型解析自己的默认值。实时 LLM 适配器在创建子 agent 前校验有效路由。目录成员资格只提供建议，因此适配器接受时，模型可以使用未列出的 id。
 
@@ -72,6 +77,7 @@ kind: "package-reference"
 
 ```yaml
 subagent-model-selection:
+  runtimeProvider: codex
   enabled: true
   defaultSelection:
     provider: deepseek-official
@@ -81,6 +87,8 @@ subagent-model-selection:
 ```
 
 省略 `defaultSelection` 会让子 agent 继承父级路由。仅当模型需要逐调用选择其他路由时，才添加 `allowedModels`；自动默认路由不需要允许列表。
+
+Web 设置卡片会在 DSH 模型控制项上方显示同一个子运行时目录。选择「配置文件默认值（DSH Agent）」使用工具行的 `provider`；选择已注册的 Codex、Claude Code 或 OpenCode 时，把模型和推理等级选择交给对应产品。原生选项会隐藏 DSH 模型控制，因为这些值无法通过 `SubagentProvider` 的启动约定应用。
 
 -----
 
@@ -94,7 +102,7 @@ subagent-model-selection:
 
 ### 设计理念
 
-一个实例就是一个提供方加一个工具名称。插件镜像提供方生命周期：具名提供方出现时注册工具，提供方离开时释放工具，因此同级加载顺序与 HMR 替换不会让工具悬空。提供方无法执行的数值型 `maxDepth` 或已配置 LLM 选择会在挂载时失败，而不是在首次委派时失败。每个工具作用域内最多一个实例可以拥有模型选择，因为 `list_subagent_models` 使用全局名称。
+一个实例就是一个已配置的提供方加一个工具名称。插件镜像提供方生命周期：它解析 Session 采样的运行时，具名提供方出现时注册工具，提供方离开时释放工具，因此同级加载顺序与 HMR 替换不会让工具悬空。所选提供方无法执行的数值型 `maxDepth` 或已配置 LLM 选择会在挂载时失败，而不是在首次委派时失败。每个工具作用域内最多一个 harness 提供方实例可以拥有模型选择，因为 `list_subagent_models` 使用全局名称；切换到原生运行时会随旧运行时释放该发现工具。
 
 ### 前台结算
 
@@ -114,8 +122,8 @@ subagent-model-selection:
 |---|---|
 | [`src/index.ts`](src/index.ts) | 工具注册、生命周期镜像、模式解析、结果结算 |
 | [`src/model-selection.ts`](src/model-selection.ts) | 请求／配置合并与实时 LLM 路由预检 |
-| [`src/model-selection-settings.ts`](src/model-selection-settings.ts) | 为新 Session 读取的宿主所有 opt-in 设置 |
-| [`src/model-selection-state.ts`](src/model-selection-state.ts) | 记录并继承已读取决定的 Session 事件 |
+| [`src/model-selection-settings.ts`](src/model-selection-settings.ts) | 为新 Session 读取的宿主子运行时、默认路由与 opt-in 设置 |
+| [`src/model-selection-state.ts`](src/model-selection-state.ts) | 记录并继承已读取的运行时、默认路由与允许列表决定 |
 | [`src/list-models.ts`](src/list-models.ts) | `list_subagent_models` 运行时发现工具 |
 
 </details>
@@ -159,7 +167,7 @@ subagent-model-selection:
 
 #### 模型看到什么
 
-携带默认路由的 settings 控制实例会在没有模型选择字段时应用该 provider/model/effort；携带允许列表的 Session 还会公开子级 LLM 选择字段与 `list_subagent_models`。可选 `ctx.llm` 服务不可用时，调用会失败。发现只返回精确路由策略中的已注册提供方与已公布模型；未授权提供方会在调用其适配器目录前被拒绝，精确查询也必须先获准，才会解析模型的推理强度与默认值。执行阶段会独立强制同一策略。
+携带所选运行时的 settings 控制实例会把工具绑定到该运行时。harness 所有的运行时可以在没有模型选择字段时应用默认 provider/model/effort；携带允许列表的 Session 还会公开子级 LLM 选择字段与 `list_subagent_models`。原生运行时不会公开 DSH 路由字段或发现工具，因为原生产品负责模型和推理等级。只有必须预检 DSH 路由时，缺少可选 `ctx.llm` 服务才会导致调用失败。发现只返回精确路由策略中的已注册提供方与已公布模型；未授权提供方会在调用其适配器目录前被拒绝，精确查询也必须先获准，才会解析模型的推理强度与默认值。执行阶段会独立强制同一策略。
 
 #### Token 影响
 
@@ -227,6 +235,7 @@ Use subagent in the background by default. Start independent delegations togethe
 - **后台运行不通过本工具公开结果**——一次性任务的最终输出通过通用 Task 接口收集，可继续子 agent 的输出留在其自身会话中，按其 subagent id 读取。结算通知会说明该子 agent 如何结束，并携带可能存在的最终 assistant 消息，但它不是本次调用的返回值，也无法在此等待。
 - **等待中的一次性实例较晚才发现重复名称**（`TODO(subagent-dup-toolname)`）——可继续实例会在插件应用期间预留提示词 section 名称，但若要阻止等待中的一次性实例回滚提供方注册，仍需要一份预期名称注册表。
 - **fork 路由变化可能降低继承前缀复用**——标准 fork 工具在启用时接受宿主默认路由，但与父级不同的路由可能阻止提供方复用复制的对话前缀。
+- **原生运行时保留原生模型所有权**——运行时选择器可以把 Session 路由到 Codex、Claude Code 或通过 ACP 使用的 OpenCode，但 DSH 无法把自己的 LLM 提供方、模型或推理等级设置应用到这些产品；请在原生产品中配置。
 - **非路由子 agent 策略按实例固定**——另一个 persona、工具过滤器或深度上限需要另一个名称不同的工具。LLM 选择要求启用逐 Session 偏好，且提供方必须声明 `agentOptions`；两个进程内提供方和 DSH SDK 会声明该能力，而 ACP、Codex 与 Claude Code 会拒绝它，而不是忽略它。
 
 <a id="dev-note"></a>

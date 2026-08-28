@@ -13,6 +13,7 @@ import SubagentRuntime, {
   type ResolvedSubagentStartRequest,
   type SubagentCapabilities,
   type SubagentProvider,
+  type SubagentProviderSelection,
   type SubagentResult,
   type SubagentRun,
   type SubagentRunEndInfo,
@@ -38,6 +39,7 @@ function baseRequest(overrides: Partial<SubagentStartRequest> = {}): SubagentSta
 
 class StubProvider implements SubagentProvider {
   readonly inheritsParentContext = false
+  selection?: SubagentProviderSelection
   startCount = 0
   lastRequest: ResolvedSubagentStartRequest | undefined
 
@@ -88,6 +90,38 @@ describe('SubagentRuntime', () => {
     expect(added).toEqual(['alpha'])
     expect(removed).toEqual(['alpha'])
     expect(subagents.getProvider('alpha')).toBeUndefined()
+  })
+
+  it('exports only settings-safe provider metadata for the browser runtime directory', async () => {
+    const { subagents } = await service()
+    const native = new StubProvider('codex', NO_CAPS)
+    native.selection = {
+      label: 'Codex',
+      description: 'A native Codex child owns model and reasoning effort.',
+      kind: 'codex',
+      modelAuthority: 'native',
+    }
+    subagents.registerProvider(new StubProvider('spawn'))
+    subagents.registerProvider(native)
+
+    expect(subagents.remoteExportProviders()).toEqual({
+      providers: [
+        {
+          name: 'spawn',
+          label: 'spawn',
+          description: 'A DSH-managed child runtime. DSH controls the child model and reasoning effort.',
+          kind: 'custom',
+          modelAuthority: 'harness',
+        },
+        {
+          name: 'codex',
+          label: 'Codex',
+          description: 'A native Codex child owns model and reasoning effort.',
+          kind: 'codex',
+          modelAuthority: 'native',
+        },
+      ],
+    })
   })
 
   it('rolls registration back when provider-added throws', async () => {
@@ -300,7 +334,6 @@ describe('SubagentRuntime', () => {
     const heard: string[] = []
     ctx.on('subagent/provider-removed', () => { throw new Error('sync boom') })
     // Runtime listeners may return thenables even though the declaration's observable result is void.
-    // oxlint-disable-next-line typescript/no-misused-promises -- exercises rejected-listener containment
     ctx.on('subagent/provider-removed', async () => { throw new Error('async boom') })
     ctx.on('subagent/provider-removed', () => { throw { toString: () => { throw new Error('coercion') } } })
     ctx.on('subagent/provider-removed', name => void heard.push(name))

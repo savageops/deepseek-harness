@@ -60,6 +60,12 @@ function completedTurnPrefix(parent: Agent): SessionEvent[] {
  * persona section).
  */
 class ForkInProcessProvider implements SubagentProvider {
+  readonly selection = Object.freeze({
+    label: 'DSH Fork',
+    description: 'A DSH child seeded with completed parent turns. DSH controls the child model and reasoning effort.',
+    kind: 'harness' as const,
+    modelAuthority: 'harness' as const,
+  })
   readonly capabilities: SubagentCapabilities = {
     agentOptions: true,
     outputSchema: true,

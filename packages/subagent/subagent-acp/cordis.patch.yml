@@ -1,0 +1,3 @@
+# The generic ACP provider has no safe default child command. The bundle is a
+# patch carrier; the consuming Profile supplies command, args, and policy.
+[]

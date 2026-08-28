@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`dsh-client-ui-settings-plugins` is the **Plugins** settings section of the dsh web client: users edit host-plane plugin configuration on its **Plugin configuration** tab, and feature plugins contribute their own pages through `settings.plugins.tab`. This package's own tab shows one expandable card per Host plugin whose configuration a user owns: a card shows the plugin's name and what it governs, and expanding it reveals hand-written controls bound to that plugin's settings namespace, each field marking whether the user overrode it and offering a reset back to the value the deployment composed. Cards stage edits locally and write only on save, with every write fenced by the namespace revision the form read.
+`dsh-client-ui-settings-plugins` is the **Plugins** settings section of the dsh web client: users edit host-plane plugin configuration on its **Plugin configuration** tab, and feature plugins contribute their own pages through `settings.plugins.tab`. This package's own tab shows one expandable card per Host plugin whose configuration a user owns: a card shows the plugin's name and what it governs, and expanding it reveals hand-written controls bound to that plugin's settings namespace, each field marking whether the user overrode it and offering a reset back to the value the deployment composed. Cards stage edits locally and write only on save, with every write fenced by the namespace revision the form read. The Subagent card also selects the registered child runtime that receives future delegations.
 
 ## Table of Contents
 
@@ -35,7 +35,9 @@ The tab reads which settings namespaces the Host serves and dispatches one slot 
 
 A card stages what the user types and writes it only when they save. Each control renders staged text, so what is on screen is exactly what a save would store; **Discard** drops the drafts, and a card holding unsaved edits says so on its header even while collapsed. A successful save collapses the card after the read-back confirms the writes; a failed save keeps the card open, reports the failure, and retains the drafts for correction. A reset stages the composed default rather than writing immediately, and a draft the field does not accept blocks the save instead of being dropped. The Host is the only authority on whether a value was accepted.
 
-The Subagent card stages its switch, automatic default route, and exact per-call model checkboxes together. Enabling requires either a default provider/model route or at least one selected adapter route. The default route uses the selected model's live reasoning-effort choices; the allowlist remains an independent authorization for model-directed per-call overrides. Saving submits `enabled`, `defaultSelection` when present, and `allowedModels` in one mutation fenced by the revision where that draft began; a newer Host revision marks the draft failed instead of restoring a revoked route. Disabling retains the selected route and allowlist for later reuse. Available models are grouped by provider, while saved routes absent from the current catalog appear last and remain removable. Adapter names, model descriptions, and effort labels remain live directory metadata and are not stored, and the card refreshes them after adapter changes, settings commits, and reconnects.
+The Subagent card stages its child runtime, switch, automatic default route, and exact per-call model checkboxes together. Enabling requires either a default provider/model route or at least one selected adapter route. The default route uses the selected model's live reasoning-effort choices; the allowlist remains an independent authorization for model-directed per-call overrides. Saving submits `runtimeProvider`, `enabled`, `defaultSelection` when present, and `allowedModels` in one mutation fenced by the revision where that draft began; a newer Host revision marks the draft failed instead of restoring a revoked route. Disabling retains the selected runtime, route, and allowlist for later reuse. Available models are grouped by provider, while saved routes absent from the current catalog appear last and remain removable. Adapter names, model descriptions, effort labels, and runtime descriptions remain live directory metadata and are not stored, and the card refreshes them after adapter changes, settings commits, and reconnects.
+
+The **Child runtime** selector reads the settings-safe `ctx.subagents.providers` directory and stores only the selected provider name. A DSH-managed runtime exposes the DSH model and reasoning-effort controls; a native runtime such as Codex, Claude Code, or OpenCode shows an ownership notice and hides those incompatible controls. The browser never receives executable commands, arguments, paths, environment values, credentials, or native model settings. A saved provider remains visible as unavailable when its provider is not currently registered, so a temporary profile change cannot silently rewrite the user's choice.
 
 ### Secret-role fields
 
@@ -54,6 +56,10 @@ The section is one extension point and one dispatch rule: feature plugins own th
 ### The tab extension point
 
 The section declares `settings.plugins.tab`, a root list slot whose labels become ordered tabs; a tab stays mounted after its first selection so local drafts and read-only snapshots survive tab switches. The package registers its own `configurable` contribution, which declares the nested `settings.plugin.item` slot — keyed on the settings namespace a card edits. A plugin that ships a browser half registers its own card under its own namespace and owns every part of it: chrome, controls, and copy. Tabs follow the contribution's `order`; cards follow registration order.
+
+### The child-runtime directory
+
+The Subagent card consumes `ctx.subagents.providers`, a Host remote that returns registry names, user-facing labels, short descriptions, product kinds, and model authority only. The runtime controller joins that live directory with the saved `runtimeProvider`, retains missing saved names as unavailable candidates, and reloads after connection or provider-directory changes. The selected name is sent back through the Host settings scope; executable configuration stays in the Profile that registered the provider.
 
 ### The write path
 
@@ -96,6 +102,8 @@ These limits define which plugins appear and how fresh the list is; they are cur
 - **A card still needs a browser bundle** — the browser half must be a `dsh.client` package built in the client module system's lazy-CJS factory format, and the `clientBundle` preset that emits it lives in `../../../packages/client/tsdown.client.ts` rather than a published package, so a plugin outside this repository has to reproduce that build itself.
 - **The served namespaces re-read on two signals only** — the wire announces settings-document commits and connection resets, not registrations, so a namespace whose owner registers after the tab's read joins the list on the next document commit or reconnect.
 - **The shell card follows the composed executor** — the POSIX and PowerShell executor families share the `bash` namespace because a host composes exactly one of them, so the served schema differs by platform (PowerShell adds `pwshPath`) even though the card edits the same two fields on both.
+- **Native runtimes keep native model controls** — the card can select a registered Codex, Claude Code, or ACP/OpenCode runtime, but it does not proxy that product's model catalog or reasoning-effort settings; configure those values in the selected child product.
+- **Runtime availability follows composition** — the selector lists only providers registered by the running Host. A generic ACP package needs a Profile row with a concrete command and policy before a named child runtime can appear.
 
 <a id="dev-note"></a>
 ### Dev Note

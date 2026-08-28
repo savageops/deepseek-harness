@@ -2325,6 +2325,10 @@ Requires: `subagents` · `subprocess`
 export interface Config {
   /** Provider name on `ctx.subagents` (default `acp`). */
   providerName: string
+  /** Settings label for the ACP product (default `ACP agent`). */
+  label?: string
+  /** Settings description for the ACP product. */
+  description?: string
   /** The executable to spawn for each run (the child ACP agent). */
   command: string
   /** Arguments passed to {@link command}. */
@@ -2955,6 +2959,13 @@ export interface Config {
    */
   toolName?: string
   /**
+   * Sample the Host `subagent-model-selection.runtimeProvider` preference for
+   * each new top-level Session and inherit that provider in child Sessions.
+   * The selected provider owns its transport; native products also own their
+   * model and reasoning-effort settings.
+   */
+  runtimeSelectionSettings?: boolean
+  /**
    * Sample the Host `subagent-model-selection` user setting for each new
    * top-level session and inherit that decision in its child sessions. An
    * enabled `defaultSelection` is applied automatically to calls that omit
@@ -3009,7 +3020,7 @@ export interface Config {
 
 Depends on: [`AgentOptions`](subsystems/core.md)
 
-Source: [`packages/subagent/tool-subagent/src/index.ts:55`](../packages/subagent/tool-subagent/src/index.ts)
+Source: [`packages/subagent/tool-subagent/src/index.ts:57`](../packages/subagent/tool-subagent/src/index.ts)
 
 <a id="deepseek-aidsh-tool-subagent-report"></a>
 

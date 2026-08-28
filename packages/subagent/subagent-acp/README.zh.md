@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-`dsh-subagent-acp` 在全新的子进程中运行每个被委派的子 agent，并作为 Agent Client Protocol 客户端驱动它：子 agent（智能体）拥有自己的运行时、会话、模型配置和工具，可以是任何兼容 ACP 的 agent，而不只是 Harness。它是进程内 spawn 与 fork 后端的进程外替代方案，只与子 agent 共享父会话的工作目录。每次运行都会 spawn 全新进程、初始化 ACP 会话、发送任务并收集流式最终答案；权限提示由配置自动应答，因此无需人工参与。父级只收到子 agent 的最终答案或安全错误——中间消息与工具流量不会跨越边界。当子 agent 必须与父 harness 完全隔离且能说 ACP 时，选择它。
+`dsh-subagent-acp` 在全新的子进程中运行每个被委派的子 agent，并作为 Agent Client Protocol 客户端驱动它：子 agent（智能体）拥有自己的运行时、会话、模型配置和工具，可以是任何兼容 ACP 的 agent，而不只是 Harness。它是进程内 spawn 与 fork 后端的进程外替代方案，只与子 agent 共享父会话的工作目录。每次运行都会 spawn 全新进程、初始化 ACP 会话、发送任务并收集流式最终答案；权限提示由配置自动应答，因此无需人工参与。父级只收到子 agent 的最终答案或安全错误——中间消息与工具流量不会跨越边界。当子 agent 必须与父 harness 完全隔离且能说 ACP 时，选择它。本提供方声明由原生产品负责模型选择，因此 Web 子运行时选择器可以把 Session 路由到它，而 ACP 产品（例如 OpenCode）继续持有模型和推理等级配置。
 
 ## 目录
 
@@ -36,6 +36,8 @@ kind: "package-reference"
 | 字段 | 默认值 | 含义 |
 |---|---|---|
 | `providerName` | `acp` | `ctx.subagents` 上的注册表名称 |
+| `label` | `ACP agent` | 此运行时在设置页面显示的标签 |
+| `description` | `An external ACP child. The child product controls the model and reasoning effort.` | 此运行时在设置页面显示的说明 |
 | `command` | 必填 | 每次运行时 spawn 的可执行文件（子 ACP agent） |
 | `args` | `[]` | 命令参数 |
 | `cwd` | 父会话 cwd | 子进程及其 ACP 会话的工作目录覆盖值 |
@@ -45,6 +47,8 @@ kind: "package-reference"
 | `disposeGraceMs` | `3000` | 失败后观察结构化进程事实的时限；在 POSIX 上也是 SIGTERM 到 SIGKILL 的宽限 |
 
 生成的[配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-subagent-acp)是每个受支持字段及其 JSDoc 的穷尽式真源。
+
+本包携带一个空的 `dsh.bundle` patch carrier。通用 ACP 提供方本身无法安全决定命令、环境或产品策略；配置文件必须插入一个已配置的实例。这个 carrier 让包可以通过 profile loader 校验，同时把可执行配置保留在使用它的配置文件中。
 
 DeepSeek Harness 子进程使用产品启动器和一个显式的绝对路径 `DSH_HOME`。隔离 home 可防止嵌套 runtime 发现启动者个人的 profile 或凭据；通用 ACP provider 不会把这一要求强加给非 DSH agent。
 
@@ -60,6 +64,24 @@ DeepSeek Harness 子进程使用产品启动器和一个显式的绝对路径 `D
       DSH_HOME: /absolute/path/to/isolated-child-home
       DEEPSEEK_API_KEY: !!js process.env.DEEPSEEK_API_KEY
 ```
+
+### 通过 ACP 使用 OpenCode
+
+OpenCode 以 `opencode acp` 提供 ACP 命令。Web profile 把它组合成一个具名原生运行时，因此 subagent 设置卡片可以选择「OpenCode」：
+
+```yaml
+- id: subagent-acp-opencode
+  name: '@deepseek-ai/dsh-subagent-acp'
+  config:
+    providerName: opencode
+    label: OpenCode
+    description: OpenCode child runtime over ACP; OpenCode owns model and reasoning effort selection.
+    command: opencode
+    args: [acp]
+    permission: reject
+```
+
+在 OpenCode 自己的产品配置中设置 provider、model 和 variant。DSH 通过 ACP 传递所选 Session 的工作区，不会把 DSH LLM 路由字段注入 OpenCode。原生命令见 [OpenCode ACP 文档](https://opencode.ai/docs/acp/)，产品设置见 [OpenCode 配置文档](https://opencode.ai/docs/config/)。
 
 ### 你会得到什么
 
@@ -161,6 +183,7 @@ spawn、初始化或新建会话失败会在发布前拒绝，通常先等待子
 - **不支持可选启动时能力**——本提供方无法在远程进程内应用 `agentOptions`、`outputSchema`、深度上限、工具过滤器或 persona，因此 seam 会拒绝需要它们的请求。
 - **只收集已提交的 `agent_message_chunk` 文本**——自动化服务器把推理（reasoning）、工具活动、计划和其他 trace 数据保留在子 agent 会话日志中，不通过 ACP 发出。
 - **权限提示自动应答**（`permission: allow | reject`）——不会把子 agent 的 `session/request_permission` 呈现给人。
+- **模型配置仍由原生产品负责**——运行时选择器可以选择 OpenCode 这样的 ACP 实例，但本提供方不会公开 DSH 的 `provider`、`model` 或 `reasoning_effort` 覆盖。
 
 <a id="dev-note"></a>
 ### 开发备注

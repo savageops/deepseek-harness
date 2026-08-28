@@ -27,6 +27,10 @@ export const inject = ['subagents', 'subprocess']
 export interface Config {
   /** Provider name on `ctx.subagents` (default `acp`). */
   providerName: string
+  /** Settings label for the ACP product (default `ACP agent`). */
+  label?: string
+  /** Settings description for the ACP product. */
+  description?: string
   /** The executable to spawn for each run (the child ACP agent). */
   command: string
   /** Arguments passed to {@link command}. */
@@ -65,6 +69,8 @@ export interface Config {
 
 export const Config: z<Config> = z.object({
   providerName: z.string().default('acp'),
+  label: z.string().min(1).default('ACP agent'),
+  description: z.string().min(1).default('An external ACP child. The child product controls the model and reasoning effort.'),
   command: z.string().required(),
   args: z.array(z.string()).default([]),
   cwd: z.string(),
@@ -144,6 +150,7 @@ function resolveCwd(configured: string | undefined, request: SubagentStartReques
  * `persona` (the service rejects a request needing any before `start` runs).
  */
 class AcpProvider implements SubagentProvider {
+  readonly selection
   readonly capabilities: SubagentCapabilities = {
     agentOptions: false,
     outputSchema: false,
@@ -154,7 +161,14 @@ class AcpProvider implements SubagentProvider {
   // Context contract: an out-of-process ACP child starts fresh — no parent conversation crosses the process boundary.
   readonly inheritsParentContext = false
 
-  constructor(readonly name: string, private readonly ctx: Context, private readonly config: ResolvedConfig) {}
+  constructor(readonly name: string, private readonly ctx: Context, private readonly config: ResolvedConfig) {
+    this.selection = Object.freeze({
+      label: config.label,
+      description: config.description,
+      kind: 'acp' as const,
+      modelAuthority: 'native' as const,
+    })
+  }
 
   start(request: ResolvedSubagentStartRequest) {
     if (request.signal.aborted) {

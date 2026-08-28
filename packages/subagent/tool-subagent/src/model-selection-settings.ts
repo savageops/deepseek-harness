@@ -24,6 +24,8 @@ export const SUBAGENT_MODEL_SELECTION_SETTINGS_NAMESPACE = settingsNamespace('su
 
 /** Stored user preference; the shipped composition defaults it off. */
 export interface SubagentModelSelectionSettings {
+  /** Explicit child-runtime provider; omission keeps the delegation tool's profile default. */
+  runtimeProvider?: string
   /** Whether newly composed top-level Sessions receive model selection. */
   enabled: boolean
   /** Automatic child route applied when a delegation call does not choose one. */
@@ -34,6 +36,7 @@ export interface SubagentModelSelectionSettings {
 
 /** Schema served to settings clients for the opt-in preference. */
 export const SUBAGENT_MODEL_SELECTION_SETTINGS_SCHEMA: z<SubagentModelSelectionSettings> = z.object({
+  runtimeProvider: z.string().min(1),
   enabled: z.boolean().default(false),
   // Prevent Schemastery from materializing an omitted nested route as `{}`.
   defaultSelection: SubagentModelSelectionSchema.default(undefined as unknown as SubagentModelSelection),
@@ -42,6 +45,8 @@ export const SUBAGENT_MODEL_SELECTION_SETTINGS_SCHEMA: z<SubagentModelSelectionS
 
 /** Optional deployment base for the preference. */
 export interface Config {
+  /** Initial child-runtime provider; omission keeps the delegation tool's profile default. */
+  runtimeProvider?: string
   /** Initial enabled state inherited when the user document does not override it. */
   enabled?: boolean
   /** Initial automatic child route inherited when the user document does not override it. */
@@ -53,6 +58,7 @@ export interface Config {
 /** Singleton settings owner read by delegation tools when an Agent is published. */
 export class SubagentModelSelectionConfig extends Service {
   static Config: z<Config> = z.object({
+    runtimeProvider: z.string().min(1),
     enabled: z.boolean().default(false),
     // Prevent Schemastery from materializing an omitted nested route as `{}`.
     defaultSelection: SubagentModelSelectionSchema.default(undefined as unknown as SubagentModelSelection),
@@ -66,6 +72,7 @@ export class SubagentModelSelectionConfig extends Service {
     // Cordis supplies the schema default; the fallback also covers direct construction.
     /* v8 ignore next */
     const entry: SubagentModelSelectionSettings = {
+      ...config.runtimeProvider === undefined ? {} : { runtimeProvider: config.runtimeProvider },
       enabled: config.enabled ?? false,
       ...config.defaultSelection === undefined ? {} : {
         defaultSelection: {
@@ -102,6 +109,7 @@ export class SubagentModelSelectionConfig extends Service {
   current(): SubagentModelSelectionSettings {
     const current = this.source()
     return {
+      ...current.runtimeProvider === undefined ? {} : { runtimeProvider: current.runtimeProvider },
       enabled: current.enabled,
       ...current.defaultSelection === undefined ? {} : {
         defaultSelection: {
@@ -117,6 +125,10 @@ export class SubagentModelSelectionConfig extends Service {
   }
 
   private validate(value: SubagentModelSelectionSettings): void {
+    if (value.runtimeProvider !== undefined
+      && (typeof value.runtimeProvider !== 'string' || value.runtimeProvider.length === 0)) {
+      throw new Error('subagent runtime selection requires a non-empty provider name')
+    }
     assertAllowedModelRoutes(value.allowedModels)
     if (value.defaultSelection !== undefined) assertSubagentModelSelection(value.defaultSelection)
     if (value.enabled && value.defaultSelection === undefined && value.allowedModels.length === 0) {

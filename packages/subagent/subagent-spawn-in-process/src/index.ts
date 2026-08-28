@@ -39,6 +39,12 @@ export const Config: z<Config> = z.object({
  * shadowing persona section, applied in the child's creation window).
  */
 class SpawnInProcessProvider implements SubagentProvider {
+  readonly selection = Object.freeze({
+    label: 'DSH Agent',
+    description: 'A fresh in-process DSH child. DSH controls the child model and reasoning effort.',
+    kind: 'harness' as const,
+    modelAuthority: 'harness' as const,
+  })
   readonly capabilities: SubagentCapabilities = {
     agentOptions: true,
     outputSchema: true,

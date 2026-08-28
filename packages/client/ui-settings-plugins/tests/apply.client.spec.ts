@@ -46,6 +46,7 @@ async function bench(served?: string[]) {
   const remote = new TestRemote(ctx, {
     credentials: { describe: describeCredentials, set: vi.fn() },
     session: { modelCatalog: models },
+    subagents: { providers: vi.fn(() => Promise.resolve({ ok: true, value: { providers: [] } })) },
     settings: { describe: describeSettings },
   })
   ctx.provide('connection', {
@@ -67,7 +68,7 @@ function declareRoot(slots: SlotRegistry): () => void {
 describe('ui-settings-plugins apply', () => {
   it('declares the services it uses', () => {
     expect(inject).toEqual([
-      'slots', 'locale', 'connection', 'remote', 'remote.credentials', 'remote.session', 'settingsScope',
+      'slots', 'locale', 'connection', 'remote', 'remote.credentials', 'remote.session', 'remote.subagents', 'settingsScope',
     ])
   })
 

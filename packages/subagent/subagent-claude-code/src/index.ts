@@ -71,6 +71,12 @@ type ResolvedConfig = Omit<Required<Config>, 'model'> & Pick<Config, 'model'>
 /* jscpd:ignore-start -- Cordis registration and shared-seam plumbing mirror
  * the Codex sibling; each product's lifecycle remains package-private. */
 class ClaudeCodeProvider implements SubagentProvider {
+  readonly selection = Object.freeze({
+    label: 'Claude Code',
+    description: 'A fresh native Claude Code child. Claude Code controls the child model and reasoning effort.',
+    kind: 'claude-code' as const,
+    modelAuthority: 'native' as const,
+  })
   readonly capabilities: SubagentCapabilities = NO_START_CAPABILITIES
   readonly inheritsParentContext = false
 
