@@ -129,12 +129,14 @@ export class ProjectionValueStore {
    * @param key - projection key.
    * @param value - whole value computed by the host unit.
    * @param seq - the unit's watermark at emission.
+   * @returns whether the value advanced the stored row.
    */
-  apply(key: string, value: unknown, seq: number): void {
+  apply(key: string, value: unknown, seq: number): boolean {
     const row = this.rows.get(key)
-    if (row !== undefined && seq <= row.seq) return // higher seq wins; replays and stale frames drop
+    if (row !== undefined && seq <= row.seq) return false // higher seq wins; replays and stale frames drop
     this.rows.set(key, { value, seq })
     this.changed(key)
+    return true
   }
 
   /**

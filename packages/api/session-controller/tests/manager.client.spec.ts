@@ -744,6 +744,42 @@ describe('remaining branches', () => {
     expect(manager.getListSnapshot().items).toBe(after.items)
   })
 
+  it('drops an evicted row from the identity cache before it is listed again', async () => {
+    const api = new FakeApiClient()
+    api.onList = () => Promise.resolve(ok({ items: [summary(S1)] as never[] }))
+    const manager = new SessionManager(fakeRemote(api))
+    await manager.refreshList()
+    const first = manager.getListSnapshot().items[0]
+
+    api.onList = () => Promise.resolve(ok({ items: [] as never[] }))
+    await manager.refreshList()
+    expect(manager.getListSnapshot().items).toEqual([])
+
+    api.onList = () => Promise.resolve(ok({ items: [summary(S1)] as never[] }))
+    await manager.refreshList()
+    const second = manager.getListSnapshot().items[0]
+    expect(second).not.toBe(first)
+  })
+
+  it('does not publish a list snapshot for no-op lifecycle frames', async () => {
+    const api = new FakeApiClient()
+    api.onList = () => Promise.resolve(ok({ items: [summary(S1)] as never[] }))
+    const manager = new SessionManager(fakeRemote(api))
+    await manager.refreshList()
+    const before = manager.getListSnapshot()
+    const notified = vi.fn()
+    manager.subscribe(notified)
+
+    manager.handleSessionStatus(S1, false)
+    manager.handleSessionActivity(S1, 100)
+    manager.handleSessionStatus(S2, false)
+    manager.handleSessionRemoved(S2)
+    await Promise.resolve()
+
+    expect(manager.getListSnapshot()).toBe(before)
+    expect(notified).not.toHaveBeenCalled()
+  })
+
   it('carries parentSessionId from the added event into the lineage row', () => {
     const api = new FakeApiClient()
     const manager = new SessionManager(fakeRemote(api))

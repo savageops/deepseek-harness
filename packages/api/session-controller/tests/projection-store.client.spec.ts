@@ -7,7 +7,7 @@
  * seeding, control-stream projection routing pre- and post-instantiation, the
  * list rows' title projection).
  */
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { SessionId } from '@deepseek-ai/dsh-api-remotes/client'
 import { ProjectionValueStore } from '../src/client/sessions/projection-store.ts'
 import { Session } from '../src/client/sessions/session.ts'
@@ -177,6 +177,31 @@ describe('manager frame routing', () => {
     })
     await Promise.resolve()
     expect(manager.getListSnapshot().items[0]?.title).toBeUndefined()
+  })
+
+  it('does not publish a manager snapshot for a stale projection frame', async () => {
+    const api = new FakeApiClient()
+    api.onList = () => Promise.resolve(ok({
+      items: [{ sessionId: sid('s1'), updatedAt: 1, running: false, blank: false }],
+    }) as never)
+    const manager = new SessionManager(fakeRemote(api))
+    await manager.refreshList()
+    const notified = vi.fn()
+    manager.subscribe(notified)
+
+    manager.handleControlFrame({
+      type: 'projection', sessionId: sid('s1'), key: 'title', value: 'fresh', seq: 4,
+    })
+    await Promise.resolve()
+    expect(notified).toHaveBeenCalledTimes(1)
+    notified.mockClear()
+
+    manager.handleControlFrame({
+      type: 'projection', sessionId: sid('s1'), key: 'title', value: 'stale', seq: 3,
+    })
+    await Promise.resolve()
+    expect(notified).not.toHaveBeenCalled()
+    expect(manager.getListSnapshot().items[0]?.title).toBe('fresh')
   })
 
   it('projects every retained value into list rows with stable snapshot identity', async () => {

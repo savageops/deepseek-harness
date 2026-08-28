@@ -108,7 +108,7 @@ export class SessionManager {
    *  is instantiated (list rows read the 'title' key), and an instantiated Session adopts the
    *  same store so history-baseline seeding and frames converge on one row set. */
   private readonly projectionStores = new Map<SessionId, ProjectionValueStore>()
-  private summaries: SessionSummary[] = []
+  private summaries: readonly SessionSummary[] = []
   private listState: 'idle' | 'loading' | 'error' = 'idle'
   /** Arrival phase; the pending → ready edge fires on the first successful pull (see SessionListPhase). */
   private listPhase: SessionListPhase = 'pending'
@@ -470,7 +470,7 @@ export class SessionManager {
           for (const s of baseline) {
             if (!this.prevRunning.has(s.sessionId)) this.prevRunning.set(s.sessionId, s.running)
           }
-          let summaries = baseline
+          let summaries: readonly SessionSummary[] = baseline
           for (const mutation of mutations) {
             summaries = applyMutation(summaries, mutation)
             this.summaries = summaries
@@ -637,7 +637,10 @@ export class SessionManager {
   /** Apply immediately and retain for replay when a list response is in flight. */
   private recordMutation(mutation: SessionListMutation): void {
     this.listMutations?.push(mutation)
-    this.summaries = applyMutation(this.summaries, mutation)
+    const previous = this.summaries
+    const next = applyMutation(previous, mutation)
+    this.summaries = next
+    if (next === previous) return
     // Eager edge reconciliation — a snapshot-build-time pass would miss consecutive status frames.
     this.syncCompletedNotifications()
     this.notifier.markDirty()
@@ -675,8 +678,11 @@ export class SessionManager {
       return
     }
     if (frame.type === 'projection') {
-      this.projectionStore(frame.sessionId).apply(frame.key, frame.value, frame.seq)
-      this.notifier.markDirty()
+      if (this.projectionStore(frame.sessionId).apply(frame.key, frame.value, frame.seq)) {
+        // Keep the manager's one-microtask publication latency for accepted
+        // frames; stale/replayed values do not change the list snapshot.
+        this.notifier.markDirty()
+      }
       return
     }
     if (frame.type === 'jobs') {
@@ -930,7 +936,12 @@ export class SessionManager {
       }
     })
     const fresh = flattenLineage(merged, this.completedNotifications)
+    // The entry cache survives refreshes so unchanged rows keep their identity.
+    // Index the current list once so eviction stays linear when a high-cardinality
+    // sidebar refreshes (the browser performance fixture exercises 1,000 rows).
+    const listedIds = new Set<SessionId>()
     const items = fresh.map((entry) => {
+      listedIds.add(entry.sessionId)
       const prev = this.entryCache.get(entry.sessionId)
       if (
         prev !== undefined && prev.updatedAt === entry.updatedAt && prev.running === entry.running
@@ -944,13 +955,13 @@ export class SessionManager {
       return entry
     })
     for (const id of this.entryCache.keys()) {
-      if (!items.some(e => e.sessionId === id)) this.entryCache.delete(id)
+      if (!listedIds.has(id)) this.entryCache.delete(id)
     }
     const sameOrder = items.length === this.itemsCache.length && items.every((e, i) => e === this.itemsCache[i])
     if (!sameOrder) this.itemsCache = items
     const selected = this.selected
     const current = selected !== undefined
-      && (items.some(item => item.sessionId === selected) || this.addresses.has(selected))
+      && (listedIds.has(selected) || this.addresses.has(selected))
       ? selected
       : undefined
     return {
@@ -967,7 +978,10 @@ export class SessionManager {
 }
 
 /** Apply one list mutation without deriving display order. */
-function applyMutation(summaries: readonly SessionSummary[], mutation: SessionListMutation): SessionSummary[] {
+function applyMutation(
+  summaries: readonly SessionSummary[],
+  mutation: SessionListMutation,
+): readonly SessionSummary[] {
   switch (mutation.kind) {
     case 'upsert': {
       const existing = summaries.find(summary => summary.sessionId === mutation.summary.sessionId)
@@ -985,27 +999,43 @@ function applyMutation(summaries: readonly SessionSummary[], mutation: SessionLi
       }
       if (filled.cwd === existing.cwd && filled.parentSessionId === existing.parentSessionId
         && filled.origin === existing.origin && filled.blank === existing.blank
-      ) return [...summaries]
+      ) return summaries
       return summaries.map(summary => summary.sessionId === mutation.summary.sessionId ? filled : summary)
     }
-    case 'remove':
-      return summaries.filter(summary => summary.sessionId !== mutation.sessionId)
-    case 'status':
+    case 'remove': {
+      const next = summaries.filter(summary => summary.sessionId !== mutation.sessionId)
+      return next.length === summaries.length ? summaries : next
+    }
+    case 'status': {
       // running:true doubles as the cross-client blank flip (a blank session
       // never runs, so the first running frame proves a message landed).
-      return summaries.map(summary => summary.sessionId === mutation.sessionId
-        && (summary.running !== mutation.running || (mutation.running && summary.blank))
-        ? { ...summary, running: mutation.running, blank: summary.blank && !mutation.running }
-        : summary)
-    case 'activity':
-      return summaries.map(summary => summary.sessionId === mutation.sessionId
-        && mutation.updatedAt > summary.updatedAt
-        ? { ...summary, updatedAt: mutation.updatedAt }
-        : summary)
-    case 'engaged':
-      return summaries.map(summary => summary.sessionId === mutation.sessionId && summary.blank
-        ? { ...summary, blank: false }
-        : summary)
+      let changed = false
+      const next = summaries.map((summary) => {
+        if (summary.sessionId !== mutation.sessionId
+          || (summary.running === mutation.running && (!mutation.running || !summary.blank))) return summary
+        changed = true
+        return { ...summary, running: mutation.running, blank: summary.blank && !mutation.running }
+      })
+      return changed ? next : summaries
+    }
+    case 'activity': {
+      let changed = false
+      const next = summaries.map((summary) => {
+        if (summary.sessionId !== mutation.sessionId || mutation.updatedAt <= summary.updatedAt) return summary
+        changed = true
+        return { ...summary, updatedAt: mutation.updatedAt }
+      })
+      return changed ? next : summaries
+    }
+    case 'engaged': {
+      let changed = false
+      const next = summaries.map((summary) => {
+        if (summary.sessionId !== mutation.sessionId || !summary.blank) return summary
+        changed = true
+        return { ...summary, blank: false }
+      })
+      return changed ? next : summaries
+    }
   }
 }
 

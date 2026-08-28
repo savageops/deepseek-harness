@@ -740,6 +740,25 @@ export type SessionEvent<T extends SessionEventType = SessionEventType> = {
 
 来源：[`packages/subagent/subagent/src/descriptor.ts:38`](../packages/subagent/subagent/src/descriptor.ts)
 
+<a id="subagentmodel-selection-default--log-only"></a>
+
+#### `subagent/model-selection-default` — 仅日志
+
+```ts persistence-catalog
+/**
+ * Records the automatic child route sampled for this Session's tool
+ * definition. Appended before the first model request; absence means that
+ * child calls inherit the parent route unless they make an explicit choice.
+ * Log-only: it carries no `surfaceOp` and never enters model history.
+ */
+'subagent/model-selection-default': {
+  /** Exact provider/model/effort applied to calls without an override. */
+  selection: SubagentModelSelection
+}
+```
+
+来源：[`packages/subagent/tool-subagent/src/model-selection-state.ts:38`](../packages/subagent/tool-subagent/src/model-selection-state.ts)
+
 <a id="subagentmodel-selection-policy--log-only"></a>
 
 #### `subagent/model-selection-policy` — 仅日志
@@ -757,7 +776,25 @@ export type SessionEvent<T extends SessionEventType = SessionEventType> = {
 }
 ```
 
-来源：[`packages/subagent/tool-subagent/src/model-selection-state.ts:14`](../packages/subagent/tool-subagent/src/model-selection-state.ts)
+来源：[`packages/subagent/tool-subagent/src/model-selection-state.ts:28`](../packages/subagent/tool-subagent/src/model-selection-state.ts)
+
+<a id="subagentruntime-provider-selection--log-only"></a>
+
+#### `subagent/runtime-provider-selection` — 仅日志
+
+```ts persistence-catalog
+/**
+ * Records the child-runtime provider captured for this Session's
+ * delegation definition. Absence means the tool's configured profile
+ * provider. Log-only: it never enters model history.
+ */
+'subagent/runtime-provider-selection': {
+  /** Exact `ctx.subagents` provider name used by this Session's tool. */
+  provider: string
+}
+```
+
+来源：[`packages/subagent/tool-subagent/src/model-selection-state.ts:18`](../packages/subagent/tool-subagent/src/model-selection-state.ts)
 
 ### `team/*`
 
