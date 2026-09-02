@@ -117,6 +117,17 @@ export namespace ModuleLoader {
     } catch {}
   }
 
+  /**
+   * Locate and classify the running Node internal module loader.
+   *
+   * The shape is decided by which module-job API the loader owns, never by the
+   * Node version: v2 landed in 24.12.0, so a major-version test mistags every
+   * 24.0–24.11.1 loader as v2 and makes consumers call `resolveSync` with
+   * reversed parameters. Arity is not usable either — `resolveSync` reports 2
+   * under both shapes. A loader owning neither API is left unclassified rather
+   * than guessed, so consumers take their documented no-internals path.
+   * @returns the classified loader, or `undefined` when none is reachable or its shape is unknown.
+   */
   export function fromInternal(): ModuleLoader | undefined {
     if (_cachedLoader) return _cachedLoader
     // Keep the major gate because the browser build aliases node:module and

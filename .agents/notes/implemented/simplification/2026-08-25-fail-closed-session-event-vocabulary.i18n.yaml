@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/simplification/2026-08-25-fail-closed-session-event-vocabulary.md
-2026-08-25-fail-closed-session-event-vocabulary.md: 6a234e9d6f7965b24068f2b89dd2fd645956a782
-2026-08-25-fail-closed-session-event-vocabulary.zh.md: 5d873795c7faebf37fdacd2ea0e127f904e53472
+2026-08-25-fail-closed-session-event-vocabulary.md: 758f892339640488bf240866b1d6603844e7a313
+2026-08-25-fail-closed-session-event-vocabulary.zh.md: 0ffc565bc01751d727d7a7c8c520d8b0739f8eee

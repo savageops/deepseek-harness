@@ -9,6 +9,7 @@
  * bare observable faces feed `useProjection` (ui-renderer binds them).
  */
 import type { SessionProjectionMap } from '@deepseek-ai/dsh-session-projection/types'
+import type { SessionSeqCursor } from '@deepseek-ai/dsh-session/types'
 import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
 import { Notifier } from './notifier.ts'
 
@@ -46,7 +47,7 @@ export type UseProjection = {
  */
 export interface ProjectionsBaseline {
   /** The consistent-cut seq (equals the window tail seq by construction). */
-  asOfSeq: number
+  asOfSeq: SessionSeqCursor
   /** Whole current values by key; a registered key absent here means the capability is absent. */
   values: Readonly<Record<string, unknown>>
 }
@@ -54,7 +55,7 @@ export interface ProjectionsBaseline {
 /** One key's row: the latest finished value and the seq it is consistent with. */
 interface Row {
   value: unknown
-  seq: number
+  seq: SessionSeqCursor
 }
 
 /** Per-key notification channel: the bare face plus its batching notifier. */
@@ -131,7 +132,7 @@ export class ProjectionValueStore {
    * @param seq - the unit's watermark at emission.
    * @returns whether the value advanced the stored row.
    */
-  apply(key: string, value: unknown, seq: number): boolean {
+  apply(key: string, value: unknown, seq: SessionSeqCursor): boolean {
     const row = this.rows.get(key)
     if (row !== undefined && seq <= row.seq) return false // higher seq wins; replays and stale frames drop
     this.rows.set(key, { value, seq })
@@ -167,7 +168,7 @@ export class ProjectionValueStore {
    * baseline immediately afterward.
    * @param lastSeq - highest durable sequence reflected by the baseline.
    */
-  truncate(lastSeq: number): void {
+  truncate(lastSeq: SessionSeqCursor): void {
     for (const [key, row] of this.rows) {
       if (row.seq <= lastSeq) continue
       this.rows.delete(key)

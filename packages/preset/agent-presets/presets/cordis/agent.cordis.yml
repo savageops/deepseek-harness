@@ -153,12 +153,6 @@
 # `workflows` is different — nothing outside an agent reads it — so every row
 # that reaches it shares one entry-local realm here, and a consumer left
 # outside would resolve a host registry this preset does not populate.
-#
-# `tool-subagent-report` is host-plane for the same reason as the registry,
-# not because a preset may not want it: it registers a CONTINUABLE SETUP on
-# that singleton rather than a tool this agent calls, and the setup list is
-# not scope-aware — one copy per mounted preset means every child gets
-# `report` registered once per live session, which throws on the second.
 - id: delegation
   name: cordis:group
   group: true
@@ -182,8 +176,9 @@
 
     # Fork samples the Host default route at Agent publication. A route that
     # differs from the parent can prevent provider-side KV Cache reuse for the
-    # copied prefix; the child remains continuable and accepts child-scoped
-    # `report` additions. Issue #2124 tracks cache-preserving continuable fork.
+    # copied prefix; the child remains continuable, inherits the same messaging
+    # tool as its parent, and follows the inherited history for its parent id
+    # and return guidance. Issue #2124 tracks cache-preserving continuable fork.
     - id: tool-subagent-fork
       name: '@deepseek-ai/dsh-tool-subagent'
       config:

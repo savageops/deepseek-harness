@@ -69,7 +69,7 @@ kind: "package-reference"
 
 设置 `runtimeSelectionSettings: true`，即可在组合每个顶层 Session 时读取宿主的 `subagent-model-selection.runtimeProvider`。运行时目录只返回已注册提供方的名称、标签、产品类型和模型所有权元数据。采样决定会记录进 Session、由子 Session 继承，后续设置编辑不会改变它。设置为空时使用配置文件的 `provider`。
 
-设置 `modelSelectionSettings: true`，即可在组合每个顶层 Session 时读取宿主的 DSH 子级 LLM 偏好。该设置包含一个自动使用的 `defaultSelection`（`provider`、`model` 与可选的 `reasoningEffort`），以及供模型逐调用选择的可选 `allowedModels` 列表。默认路由应用于省略路由字段的委派调用；只有 Session 携带允许列表时，显式路由才会覆盖它。只有当所选运行时声明 `agentOptions`，且其元数据声明由 DSH 负责模型所有权时，这些控制才会生效。两个进程内后端和 DSH SDK 支持该能力；ACP、Codex、Claude Code 以及通过 ACP 配置的 OpenCode 保留各自产品的模型控制，面向模型的路由字段和 `list_subagent_models` 会被省略，注入的 harness 路由会被拒绝而不是静默忽略。
+设置 `modelSelectionSettings: true`，即可在组合每个全新顶层 Session 时读取宿主的 DSH 子级 LLM 偏好。没有已记录策略的恢复 Session 会保持禁用，包括显式为空的恢复。该设置包含一个自动使用的 `defaultSelection`（`provider`、`model` 与可选的 `reasoningEffort`），以及供模型逐调用选择的可选 `allowedModels` 列表；启用后，非空的精确 provider/model 路由列表会记录进 Session、由子 Session 继承，后续设置编辑不会改变它。默认路由应用于省略路由字段的委派调用；只有 Session 携带允许列表时，显式路由才会覆盖它。只有当所选运行时声明 `agentOptions`，且其元数据声明由 DSH 负责模型所有权时，这些控制才会生效。两个进程内后端和 DSH SDK 支持该能力；ACP、Codex、Claude Code 以及通过 ACP 配置的 OpenCode 保留各自产品的模型控制，面向模型的路由字段和 `list_subagent_models` 会被省略，注入的 harness 路由会被拒绝而不是静默忽略。
 
 在设置页面中，选择按提供方分组的模型，再从该模型的实时目录选择推理等级；模型有公布的默认等级时，选择模型会记录它。一次调用需同时提供 `provider` 与 `model`；当配置值、父 agent 值或提供方持有的默认值能提供路由时，也可只提供推理等级。静态的 `provider.agentRouteDefaults` 在存在时构成提供方／模型基线；工具配置与模型字段会在路由相关强度合并和确切路由预检前覆盖它。没有这些默认值的提供方会使用父 agent 最新已记录请求中的兼容值，再使用父级首次请求前的创建选项，并保留配置的 `maxTokens`。更改路由但未显式提供推理等级时，会清除继承的路由自有等级，使所选模型解析自己的默认值。实时 LLM 适配器在创建子 agent 前校验有效路由。目录成员资格只提供建议，因此适配器接受时，模型可以使用未列出的 id。
 
@@ -137,7 +137,6 @@ Web 设置卡片会在 DSH 模型控制项上方显示同一个子运行时目�
 
 - [Subagent 子系统](../../../docs/subsystems/subagent.zh.md)——提供方、一次性启动请求、可继续子 agent 与 Activation。
 - [dsh-tool-subagent-control](../tool-subagent-control/README.zh.md)——可继续子 agent 的消息、中断与列表工具。
-- [dsh-tool-subagent-report](../tool-subagent-report/README.zh.md)——子到父的上报通道。
 - [生成工具目录](../../../docs/tool-catalog.zh.md#deepseek-aidsh-tool-subagent)——默认 schema 与各模式的措辞。
 - [生成配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-tool-subagent)——每个受支持配置字段。
 - [后台 subagent 任务](../../../.agents/notes/implemented/feature/2026-07-08-background-subagent-tasks.zh.md)——一次性后台路由。

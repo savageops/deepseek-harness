@@ -12,17 +12,17 @@ Status: implemented
 
 ## 决策
 
-每个会话事件类型都是读取必需项。受支持的 legacy 记录归一化后，`PersistenceCoordinator` 会将每个事件类型与 `KNOWN_SESSION_EVENT_TYPES` 比较；后者是从本仓库声明的所有 `SessionEventMap` 成员生成的集合。任何未知类型都以 `SessionFormatUnsupportedError` 拒绝重建；诊断会列出事件与序号，指明日志可能由更新的写入方生成，并在后端拥有独立原始产物时附上该路径。该守卫仍只在读取侧生效，因为在实时事件已提交后拒绝追加会中断持久化，使会话无法在下次加载时报告不受支持的日志。
+每个会话事件类型默认都是读取必需项。每次后端读取都通过持久化 seam 的共享 `validateStoredEvents` 存储契约校验日志；该契约将每个事件类型与 `KNOWN_SESSION_EVENT_TYPES`（从本仓库声明的所有 `SessionEventMap` 成员生成的集合）比较。未知类型以 `SessionFormatUnsupportedError` 拒绝重建，除非该记录带有信封的 `ignorable: true` 标记，或其活动外部所有者已通过 `ctx.sessionEventTypes` 注册该类型；诊断会列出事件与序号，指明日志可能由更新的写入方生成，并在后端拥有独立原始产物时附上该路径。该守卫仍只在读取侧生效，因为在实时事件已提交后拒绝追加会中断持久化，使会话无法在下次读取时报告不受支持的日志。
 
-`SessionEvent` 没有可选的未知事件跳过字段。JSONL 继续序列化相同的事件对象，因为生产追加路径从未发出该字段，`SESSION_FORMAT_VERSION` 仍为 `0`。SQLite 提供方将被复用的 `ignorable` 列替换为 schema 18 的 `is_packed` 判别值：标量逻辑事件存储 `0`，打包分片行存储 `1`，与物理分片标签同名的事件在协调器应用已知类型守卫之前仍可明确解码。
+信封的可选 `ignorable` 标记重新成为合并设计的一部分：它是持久化的逐事件兼容性分类，其保留理由见[保留 ignorable 的 Agent Note](../architecture/2026-08-30-retain-ignorable-external-session-events.zh.md)。`SESSION_FORMAT_VERSION` 仍为 `0`，seam 不提供格式迁移。
 
 `SESSION_FORMAT_VERSION` 仍是单个单调整数。当较旧运行时无法完全正确地解释某项结构或语义变更时，写入方必须升版本：会话 header 字段、事件 envelope 字段、核心事件语义或 `SurfaceEventType`/`SurfaceOp` 机制。仅新增事件类型无需升版本，因为较旧读取器会拒绝该确切的未知类型，而不是误读日志。版本相等时正常读取；版本不等时当前以分方向诊断拒绝。n→n+1 升级器链仍推迟到第一个真实 v0→v1 步骤提供可测的输入和输出时建立。未来的查看升级属于内存转换，只有用户继续会话时才持久替换；缺失的步骤会保留源产物以供原始查看。
 
-仓库外的 `SessionEventMap` 成员仍不在生成集合内。它们可在实时进程中运行并持久化，但第一方持久化读取器在重新加载时会拒绝它们，除非活动的外部事件所有者通过[会话事件注册 Agent Note](../architecture/2026-08-28-session-event-registration.zh.md)所述运行时 seam 注册它们。生成集合仍然不依赖组合；活动注册是能够忠实消费该类型的解释器所作的明确兼容性握手。原有的无注册边界及其理由仍适用于无所有者的类型。
+仓库外的 `SessionEventMap` 成员仍不在生成集合内。它们可在实时进程中运行并持久化，但第一方持久化读取器在重新加载时会拒绝它们，除非活动的外部事件所有者通过[会话事件注册 Agent Note](../architecture/2026-08-28-session-event-registration.zh.md)所述运行时 seam 注册它们。注册与持久化的 `ignorable` 标记是两条独立的接纳路径；无所有者且未标记的未知类型仍会被拒绝。生成集合仍然不依赖组合；活动注册是能够忠实消费该类型的解释器所作的明确兼容性握手。原有的无注册边界及其理由仍适用于无所有者的类型。
 
 ## 考虑过的替代方案
 
-**保留逐记录跳过声明。**不予采用，因为它没有生产使用方，无法通过 `Session.append()` 表达，并且要求每种存储与传输表示都保留一项推测性选择。真实需求应先定义可安全省略的事件类型，再让追加实现统一发出该分类，而不是依赖每个调用点。
+**保留逐记录跳过声明。**不予采用，因为它没有生产使用方，无法通过 `Session.append()` 表达，并且要求每种存储与传输表示都保留一项推测性选择。真实需求应先定义可安全省略的事件类型，再让追加实现统一发出该分类，而不是依赖每个调用点。（后续决策恢复了持久化的未知类型跳过标记，见[保留 ignorable 的 Agent Note](../architecture/2026-08-30-retain-ignorable-external-session-events.zh.md)。）
 
 **忽略每个未知事件。**不予采用，因为读取器无法推断一项未知持久事实是否仅用于信息。静默省略可能使会话以错误的模型输入或插件状态恢复。
 
@@ -36,6 +36,6 @@ Status: implemented
 
 较旧构建在较新的同版本日志包含任何未知事件类型后都无法恢复该日志，即使新事件仅用于信息。这是对未使用的前向降级行为的有意放弃，换取单一事件 envelope 与单一失败规则。如果真实生产方以后需要较旧读取器跳过可选事件并继续会话，设计必须只对事件类型分类一次，让 `Session.append()` 自动发出持久分类，并覆盖两个持久化后端和线上表示。
 
-第一方 JSONL 会话字节保持不变，包括打包行与 `SESSION_FORMAT_VERSION = 0`。现有第一方 JSONL 会话仍可读。SQLite 是可选功能，并遵循预发布 schema 策略：schema 18 不从 schema 17 迁移，不兼容数据库会被拒绝而不是改写。[SQLite 物理压缩决策](../architecture/2026-08-18-sqlite-physical-chunk-row-compression.zh.md)拥有该后端的打包行表示。
+第一方 JSONL 会话字节保持不变，包括打包行与 `SESSION_FORMAT_VERSION = 0`。现有第一方 JSONL 会话仍可读。（SQLite 后端已在句柄化持久化重构中移除；此处描述的 schema 18 `is_packed` 判别值仅作为历史保留。）
 
-组装后的 headless 拒绝测试证明用户会看到未知类型、序号、更新写入方方向与原始 JSONL 路径。核心 seed 测试拒绝当前事件 envelope 以外的字段；持久化约定测试拒绝每个未知类型；SQLite codec 与差分测试覆盖标量与打包判别、后缀读取、修复与跨后端逻辑相等。生成的持久化目录与已知事件模块使读取器集合与仓库所有的声明保持同步。
+组装后的 headless 拒绝测试证明用户会看到未知类型、序号、更新写入方方向与原始 JSONL 路径。核心 seed 测试拒绝当前事件 envelope 以外的字段；共享的 storage-contract 测试拒绝每个未标记、未注册的未知类型，后端契约测试（`runPersistenceContract`、`runLiveWritePathContract`）为每个提供方固定等价的拒绝行为。生成的持久化目录与已知事件模块使读取器集合与仓库所有的声明保持同步。

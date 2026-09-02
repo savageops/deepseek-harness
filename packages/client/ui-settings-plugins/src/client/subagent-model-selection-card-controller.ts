@@ -1,7 +1,7 @@
 /** Staged editor for the Host-owned subagent model allowlist. */
 
+import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type {
-  ClientRemote,
   ModelCatalogModel,
   ModelProviderGroup,
   ModelSelection,
@@ -222,14 +222,15 @@ export class SubagentModelSelectionCardController {
 
   /**
    * @param scope - bound `subagent-model-selection` settings scope.
-   * @param session - Host Session model-catalog face.
+   * @param ctx - the card plugin's context, whose `remote.session` namespace
+   * answers the Host model catalog and whose `remote.subagents` namespace
+   * answers the registered child-runtime directory.
    */
   constructor(
     private readonly scope: SettingsScope<SubagentModelSelectionSettings>,
-    private readonly session: Pick<ClientRemote['session'], 'modelCatalog'>,
-    private readonly subagents?: Pick<ClientRemote['subagents'], 'providers'>,
+    private readonly ctx: ClientContext,
   ) {
-    this.runtimeStatus = subagents === undefined ? 'ready' : 'idle'
+    this.runtimeStatus = 'idle'
     this.store = createSnapshotStore(this.projection())
     this.unsubscribe = scope.subscribe(() => {
       if (!this.saving && this.draftRoutes !== undefined
@@ -240,11 +241,11 @@ export class SubagentModelSelectionCardController {
         else this.conflicted = true
       }
       if (this.enabled() && this.catalogStatus === 'idle') void this.loadCatalog()
-      if (this.subagents !== undefined && this.runtimeStatus === 'idle') void this.loadRuntimeCatalog()
+      if (this.runtimeStatus === 'idle') void this.loadRuntimeCatalog()
       this.publish()
     })
     if (this.enabled() && this.catalogStatus === 'idle') void this.loadCatalog()
-    if (this.subagents !== undefined && this.runtimeStatus === 'idle') void this.loadRuntimeCatalog()
+    if (this.runtimeStatus === 'idle') void this.loadRuntimeCatalog()
   }
 
   /** Stop observing settings and suppress late directory/write settlements. */
@@ -512,9 +513,9 @@ export class SubagentModelSelectionCardController {
     this.runtimeGeneration += 1
     this.catalogStatus = 'idle'
     this.catalogPartial = false
-    this.runtimeStatus = this.subagents === undefined ? 'ready' : 'idle'
+    this.runtimeStatus = 'idle'
     if (this.enabled()) void this.loadCatalog()
-    if (this.subagents !== undefined) void this.loadRuntimeCatalog()
+    void this.loadRuntimeCatalog()
     this.publish()
   }
 
@@ -535,15 +536,13 @@ export class SubagentModelSelectionCardController {
     this.catalogStatus = 'loading'
     this.catalogPartial = false
     this.publish()
-    try {
-      const response = await this.session.modelCatalog()
-      if (generation !== this.catalogGeneration) return
-      if (!response.ok) throw new Error(response.error.message)
+    const response = await this.ctx.remote.session.modelCatalog()
+    if (generation !== this.catalogGeneration) return
+    if (response.ok) {
       this.catalogGroups = response.value.groups
       this.catalogPartial = response.value.failures.length > 0
       this.catalogStatus = 'ready'
-    } catch {
-      if (generation !== this.catalogGeneration) return
+    } else {
       this.catalogStatus = 'error'
     }
     this.publish()
@@ -552,17 +551,16 @@ export class SubagentModelSelectionCardController {
   private retryCatalog(): void {
     if (this.disposed) return
     if (this.enabled()) void this.loadCatalog()
-    if (this.subagents !== undefined) void this.loadRuntimeCatalog()
+    void this.loadRuntimeCatalog()
   }
 
   private async loadRuntimeCatalog(): Promise<void> {
-    const subagents = this.subagents
-    if (this.disposed || subagents === undefined || this.runtimeStatus === 'loading') return
+    if (this.disposed || this.runtimeStatus === 'loading') return
     const generation = this.runtimeGeneration
     this.runtimeStatus = 'loading'
     this.publish()
     try {
-      const response = await subagents.providers()
+      const response = await this.ctx.remote.subagents.providers()
       if (generation !== this.runtimeGeneration) return
       if (!response.ok) throw new Error(response.error.message)
       this.runtimeProviders = response.value.providers

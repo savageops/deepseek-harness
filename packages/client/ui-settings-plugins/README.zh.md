@@ -114,3 +114,5 @@ Subagent 卡消费 `ctx.subagents.providers` 这一 Host remote；它只返回�
 无。
 
 </details>
+
+**运行时不变式：** 不发布伴生入口。这是浏览器侧 settings surface，node half 不持有事件流或可变运行时数据；layering 与写入拒绝由所属 Host 插件和 api-proxy 覆盖。

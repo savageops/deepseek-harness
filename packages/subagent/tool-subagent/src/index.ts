@@ -15,7 +15,8 @@ import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { Agent, AgentOptions } from '@deepseek-ai/dsh-agent'
 import { ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
-import type { JsonValue } from '@deepseek-ai/dsh-session'
+import type { JsonValue } from '@deepseek-ai/dsh-util-values'
+import { SessionSeq } from '@deepseek-ai/dsh-session'
 import {
   assertSubagentMaxDepth,
   parentAgentOptionsForDelegation,
@@ -23,7 +24,6 @@ import {
 } from '@deepseek-ai/dsh-subagent'
 import type { SubagentProvider, SubagentResult, SubagentRun } from '@deepseek-ai/dsh-subagent'
 import type { JobOutcome } from '@deepseek-ai/dsh-jobs'
-import { FIRST_PARTY_SECTION_ORDER } from '@deepseek-ai/dsh-system-prompt'
 import {
   assertAllowedModelSelection,
   agentOptionsForSubagentSelection,
@@ -42,16 +42,14 @@ import {
   recordSubagentRuntimeProviderSelection,
   recordSubagentModelSelection,
   recordSubagentModelSelectionDefault,
-  subagentRuntimeProviderSelection,
   subagentModelSelectionDefault,
   subagentModelSelectionPolicy,
+  subagentModelSelectionProjectionDefinition,
+  subagentRuntimeProviderSelection,
 } from './model-selection-state.ts'
 
 export const name = 'tool-subagent'
-export const inject = ['tools', 'subagents', 'systemPrompt']
-
-/** Prompt order after bounded delegation policy and before child reporting. */
-const SUBAGENT_SECTION_ORDER = FIRST_PARTY_SECTION_ORDER.TOOL_SUBAGENT
+export const inject = ['tools', 'subagents', 'systemPrompt', 'sessionProjections']
 
 /** Config: which registered provider this tool delegates to, plus child defaults. */
 export interface Config {
@@ -348,6 +346,7 @@ export function apply(ctx: Context, config: Config): void {
 
   const runtimeSelectionCapable = config.runtimeSelectionSettings === true
   const modelSelectionCapable = config.modelSelectionSettings === true
+  ctx.sessionProjections.register(subagentModelSelectionProjectionDefinition)
 
   const assertSubagentProviderConfiguration = (subagentProvider: SubagentProvider): void => {
     if (typeof config.maxDepth === 'number'
@@ -430,7 +429,7 @@ export function apply(ctx: Context, config: Config): void {
           // a separately installed capability, so this promise holds whenever the
           // continuable background path is reachable at all.
           ? continuableForProvider
-            ? ' This tool runs in the background by default, immediately returns a durable subagent id, and keeps the child conversation available for later turns. When that run settles, the runtime sends the parent a notice containing its outcome and any final assistant message; `send_message` starts a later turn in the same child conversation. Set `run_in_background: false` only when your next action depends on receiving the result.'
+            ? ' This tool runs in the background by default, immediately returns a durable subagent id, and keeps the child conversation available for later turns. When that run settles, the runtime sends the parent a notice containing its outcome and any final assistant message; `send_message` steers the child\'s nearest step while it is running and starts a turn while it is idle. Set `run_in_background: false` only when your next action depends on receiving the result.'
             : ' This call waits for the result by default. Set `run_in_background: true` to return a job id; collect with `job_output` and stop with `job_kill`.'
           : ' This call waits for the subagent and returns its result.') + choiceDescription,
         parameters: {
@@ -669,7 +668,7 @@ export function apply(ctx: Context, config: Config): void {
       // absent, and the registration itself stays owned by this plugin fiber.
       runtimeCtx.systemPrompt.section({
         name: `tool:${toolName}`,
-        order: SUBAGENT_SECTION_ORDER,
+        order: runtimeCtx.systemPrompt.getSectionOrder('TOOL_SUBAGENT'),
         text: context => mounted === undefined
           || mounted.subagentProvider.prepareContinuable === undefined
           || runtimeCtx.tools.get(toolName, context.scope) === undefined
@@ -697,11 +696,15 @@ export function apply(ctx: Context, config: Config): void {
   }
 
   const selectForAgent = (agent: NonNullable<Context['agent']>): AgentModelSelection | undefined => {
+    // A cold-resumed Session replays its durable decisions; only a fresh
+    // Session (no events, or not an end-seed marker) samples current settings.
+    const freshSession = agent.session.firstLiveSeq === 0
+      && agent.session.eventAt(SessionSeq(0))?.type !== 'session/end-seed'
     let providerName = runtimeSelectionCapable
       ? subagentRuntimeProviderSelection(agent.session)
       : undefined
     let allowedModels = modelSelectionCapable
-      ? subagentModelSelectionPolicy(agent.session)
+      ? subagentModelSelectionPolicy(ctx.sessionProjections, agent.session)
       : undefined
     let defaultSelection = modelSelectionCapable
       ? subagentModelSelectionDefault(agent.session)
@@ -716,12 +719,12 @@ export function apply(ctx: Context, config: Config): void {
           providerName = subagentRuntimeProviderSelection(parent.session)
         }
         if (allowedModels === undefined && parent !== undefined && modelSelectionCapable) {
-          allowedModels = subagentModelSelectionPolicy(parent.session)
+          allowedModels = subagentModelSelectionPolicy(ctx.sessionProjections, parent.session)
         }
         if (defaultSelection === undefined && parent !== undefined && modelSelectionCapable) {
           defaultSelection = subagentModelSelectionDefault(parent.session)
         }
-      } else if (agent.session.firstLiveSeq === 0) {
+      } else if (freshSession) {
         const current = settings.current()
         if (providerName === undefined && runtimeSelectionCapable) {
           providerName = current.runtimeProvider
@@ -736,7 +739,7 @@ export function apply(ctx: Context, config: Config): void {
       recordSubagentRuntimeProviderSelection(agent.session, providerName)
     }
     if (allowedModels !== undefined && modelSelectionCapable) {
-      recordSubagentModelSelection(agent.session, allowedModels)
+      recordSubagentModelSelection(ctx.sessionProjections, agent.session, allowedModels)
     }
     if (defaultSelection !== undefined && modelSelectionCapable) {
       recordSubagentModelSelectionDefault(agent.session, defaultSelection)

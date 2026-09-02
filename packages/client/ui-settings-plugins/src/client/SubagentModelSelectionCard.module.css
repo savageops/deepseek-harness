@@ -19,7 +19,7 @@
   gap: 16px;
   font-size: 13px;
   line-height: 1.5;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--dsw-alias-label-primary);
 }
 
 .toggleLabel {
@@ -59,6 +59,7 @@
   width: 16px;
   height: 16px;
   border-radius: 50%;
+  corner-shape: round;
   background: var(--dsw-alias-label-primary-foreground);
   transition: transform 120ms ease;
 }
@@ -154,7 +155,7 @@
   margin: 0;
   padding: 10px;
   overflow: auto;
-  border: 1px solid var(--dsw-alias-border-l2);
+  border: 0.5px solid var(--dsw-alias-border-l4);
   border-radius: 8px;
   /* The model list scrolls inside the open plugin card's elevated surface;
      keep its scrollbar on the matching l2 pair (ui-theme scrollbar contract). */
@@ -176,7 +177,7 @@
 .modelGroup + .modelGroup {
   margin-top: 4px;
   padding-top: 10px;
-  border-top: 1px solid var(--dsw-alias-border-l3);
+  border-top: 0.5px solid var(--dsw-alias-border-l3);
 }
 
 .providerName {
