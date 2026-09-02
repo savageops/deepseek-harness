@@ -2323,3 +2323,94 @@ describe('ChatView', () => {
     expect(failedView.container.querySelector('[data-state="error"]')).not.toBeNull()
   })
 })
+
+/** Stub the chat layout reads the virtualizer needs under jsdom: this fork's
+ * element rect is `offsetWidth`/`offsetHeight`, so the view-local scroller must
+ * report a viewport-height box (jsdom zeros would collapse the rendered window
+ * to nothing) and virtual rows must hold the row estimate. */
+function stubChatLayout(rowHeight: number, viewportHeight: number): () => void {
+  const offsetDescriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetHeight')
+  Object.defineProperty(HTMLElement.prototype, 'offsetHeight', {
+    configurable: true,
+    get(this: HTMLElement) {
+      if (this.dataset.chatVirtualRow !== undefined) return rowHeight
+      // The view-local scroller directly hosts the chat flow column.
+      if (this.firstElementChild?.hasAttribute('data-chat-flow') === true) return viewportHeight
+      return 0
+    },
+  })
+  return () => {
+    if (offsetDescriptor === undefined) delete (HTMLElement.prototype as { offsetHeight?: unknown }).offsetHeight
+    else Object.defineProperty(HTMLElement.prototype, 'offsetHeight', offsetDescriptor)
+  }
+}
+
+describe('ChatView large-history virtualization', () => {
+  const WINDOW_NODES = 240
+  const BELOW_THRESHOLD_NODES = 90
+
+  const largeHistory = (): ChatSnapshot => chatSnapshotFixture({
+    nodes: Array.from({ length: WINDOW_NODES }, (_, index) => user(index + 1, `m${String(index + 1)}`)),
+  })
+
+  it('mounts every row directly below the virtualization threshold', () => {
+    const restore = stubChatLayout(160, 600)
+    try {
+      const h = makeHarness({}, {}, chatSnapshotFixture({
+        nodes: Array.from({ length: BELOW_THRESHOLD_NODES }, (_, index) =>
+          user(index + 1, `m${String(index + 1)}`)),
+      }))
+      const view = render(<h.ChatView {...h.props} />)
+      expect(view.container.querySelector('[data-chat-virtual-flow]')).toBeNull()
+      expect(view.container.querySelectorAll('[data-chat-flow-key]')).toHaveLength(BELOW_THRESHOLD_NODES)
+    } finally {
+      restore()
+    }
+  })
+
+  it('mounts only the measured window above the threshold', async () => {
+    const restore = stubChatLayout(160, 600)
+    try {
+      const h = makeHarness({}, {}, largeHistory())
+      const view = render(<h.ChatView {...h.props} />)
+      // Let the virtualizer's frame-scheduled measurement flush settle.
+      await act(async () => {})
+      const flow = view.container.querySelector<HTMLElement>('[data-chat-virtual-flow]')
+      expect(flow).not.toBeNull()
+      const rows = view.container.querySelectorAll<HTMLElement>('[data-chat-virtual-row]')
+      expect(rows.length).toBeGreaterThan(0)
+      expect(rows.length).toBeLessThan(WINDOW_NODES)
+      // Every mounted row carries its index and window position so the
+      // absolute layout stays addressable for find, anchors, and turn rail
+      // navigation.
+      for (const row of rows) {
+        expect(row.dataset.index).toBeDefined()
+        expect(row.style.transform).toMatch(/translateY\(-?\d+(\.\d+)?px\)/)
+      }
+      // Mounted indexes are distinct: one wrapper per window position.
+      const mountedIndexes = new Set([...rows].map(row => row.dataset.index))
+      expect(mountedIndexes.size).toBe(rows.length)
+    } finally {
+      restore()
+    }
+  })
+
+  it('keeps node identity across window moves instead of remounting', async () => {
+    const restore = stubChatLayout(160, 600)
+    try {
+      const h = makeHarness({}, {}, largeHistory())
+      const view = render(<h.ChatView {...h.props} />)
+      await act(async () => {})
+      const firstPass = [...view.container.querySelectorAll('[data-chat-virtual-row]')]
+        .map(row => row.getAttribute('data-index'))
+      expect(firstPass.length).toBeGreaterThan(0)
+      view.rerender(<h.ChatView {...h.props} />)
+      await act(async () => {})
+      const secondPass = [...view.container.querySelectorAll('[data-chat-virtual-row]')]
+        .map(row => row.getAttribute('data-index'))
+      expect(secondPass).toEqual(firstPass)
+    } finally {
+      restore()
+    }
+  })
+})

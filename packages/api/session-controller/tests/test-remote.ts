@@ -77,6 +77,7 @@ export interface TestSessionRemoteDefaults {
   readonly defaultModelSelection: () => AgentModelSelection
   readonly cwd: string
   readonly coldBlankProbeMaxBytes?: number
+  readonly modelCatalogProviderTimeoutMs?: number
   readonly nativeOpen?: boolean
   readonly saveDefaultModelSelection?: (selection: AgentModelSelection) => void | Promise<void>
   readonly openPath?: (path: string, signal: AbortSignal) => Promise<void>
@@ -192,6 +193,9 @@ function installControllers(
         ...defaults.coldBlankProbeMaxBytes === undefined
           ? {}
           : { coldBlankProbeMaxBytes: defaults.coldBlankProbeMaxBytes },
+        ...defaults.modelCatalogProviderTimeoutMs === undefined
+          ? {}
+          : { modelCatalogProviderTimeoutMs: defaults.modelCatalogProviderTimeoutMs },
         ...defaults.nativeOpen === undefined ? {} : { nativeOpen: defaults.nativeOpen },
       },
       {

@@ -303,6 +303,8 @@ export interface Config {
 export interface Config {
   /** Maximum cold Session artifact size eligible for one full projection observation. */
   readonly coldBlankProbeMaxBytes?: number
+  /** Deadline for one provider's advisory model-catalog read; zero disables it. */
+  readonly modelCatalogProviderTimeoutMs?: number
   /** Override platform desktop-opener detection. */
   readonly nativeOpen?: boolean
 }

@@ -43,6 +43,10 @@ Session 行内的 Rename 操作打开一个以该行显示标题预填的对话�
 
 Session 行渲染运行时的实时 `pendingInteraction` 分类：审批显示**等待审批**，计划审阅显示**计划待审**，普通问题显示**等待回答**。每个待处理交互都使用一枚琥珀色警告点，优先级高于运行指示器。
 
+### 大型工作区列表
+
+默认的分组投影每个 Workspace 只显示五条非空 Session。平铺结果和展开后的分组仍可能包含很多行，因此每条 Session 行都使用带 32 px 固有回退值的 `content-visibility: auto`。浏览器可以跳过屏外行的 style、layout 与 paint 工作，同时保留完整 DOM，以支持键盘导航、拖放、悬浮卡片和 tree 语义。这是 containment，不是行 virtualization：行身份与交互表面保持稳定。
+
 -----
 
 <a id="understand-the-implementation"></a>

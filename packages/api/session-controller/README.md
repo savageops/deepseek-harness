@@ -31,6 +31,8 @@ The Client adapter exposes `SessionEventStream`, a Gateway `RemoteJournalStream`
 
 Session list snapshots retain the previous row object for unchanged session ids, so a refresh does not invalidate every sidebar item. The identity cache indexes current ids during the same row pass and evicts absent ids in linear time. Accepted projection values retain the existing publication cadence, while stale/replayed projection frames and lifecycle mutations with no list-state change stay silent; list consumers should keep using the metadata snapshot and avoid opening every Session merely to render the list.
 
+The `modelCatalog` Remote is a Host-generation cache with one shared in-flight read. Repeated selector mounts receive the same value without repeating provider discovery. A change to the LLM adapters, settings document, or credential references invalidates that generation. Each provider's catalog read has a 2,500 ms deadline by default; a timed-out or failed provider becomes an isolated failure while other provider groups remain available. Set `modelCatalogProviderTimeoutMs` to `0` only when an installation intentionally accepts an unbounded provider read.
+
 The Session object also carries local submission echoes: `session.beginSubmission` inserts one into `SessionSnapshot.pendingSubmissions` synchronously, before the caller serializes and prompts, so a conversation UI can show the message on the submit click's own frame. The prompt's `requestId` is the correlation identity — the Host already echoes it as the durable user source's `rpcId`, and queue occurrences project it as `SessionQueuedItem.rpcId`. An echo retires one animation frame after its durable event or queue occurrence is observed (the delay keeps it renderable until the transcript node is), immediately when its identified prompt fails or is abandoned, and as failed on disposal; each retirement fires the registered `onRetire` callback exactly once. Echoes are Client memory only — reload and reconnect rebuild the conversation from durable events alone.
 
 -----
@@ -41,6 +43,7 @@ The Session object also carries local submission echoes: `session.beginSubmissio
 | Field | Default | Meaning |
 |---|---:|---|
 | `coldBlankProbeMaxBytes` | `1,024` | Maximum physical size of a cold Session artifact eligible for blankness verification; `0` disables probes |
+| `modelCatalogProviderTimeoutMs` | `2,500` | Deadline for one provider's advisory model-catalog read; `0` disables the deadline |
 | `nativeOpen` | platform-detected | Whether Session workspace paths can be handed to a native desktop opener |
 
 The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-api-session-controller) is the exhaustive source for accepted fields and their JSDoc.

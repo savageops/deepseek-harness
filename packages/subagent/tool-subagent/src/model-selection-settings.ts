@@ -34,14 +34,16 @@ export interface SubagentModelSelectionSettings {
   allowedModels: AllowedModelRoute[]
 }
 
-/** Schema served to settings clients for the opt-in preference. */
-export const SUBAGENT_MODEL_SELECTION_SETTINGS_SCHEMA: z<SubagentModelSelectionSettings> = z.object({
+const createSubagentModelSelectionSchema = () => z.object({
   runtimeProvider: z.string().min(1),
   enabled: z.boolean().default(false),
   // Prevent Schemastery from materializing an omitted nested route as `{}`.
   defaultSelection: SubagentModelSelectionSchema.default(undefined as unknown as SubagentModelSelection),
   allowedModels: z.array(AllowedModelRouteSchema).default([]),
 })
+
+/** Schema served to settings clients for the opt-in preference. */
+export const SUBAGENT_MODEL_SELECTION_SETTINGS_SCHEMA: z<SubagentModelSelectionSettings> = createSubagentModelSelectionSchema()
 
 /** Optional deployment base for the preference. */
 export interface Config {
@@ -55,15 +57,26 @@ export interface Config {
   allowedModels?: AllowedModelRoute[]
 }
 
+function detach(value: SubagentModelSelectionSettings): SubagentModelSelectionSettings {
+  return {
+    ...value.runtimeProvider === undefined ? {} : { runtimeProvider: value.runtimeProvider },
+    enabled: value.enabled,
+    ...value.defaultSelection === undefined ? {} : {
+      defaultSelection: {
+        provider: value.defaultSelection.provider,
+        model: value.defaultSelection.model,
+        ...value.defaultSelection.reasoningEffort === undefined
+          ? {}
+          : { reasoningEffort: value.defaultSelection.reasoningEffort },
+      },
+    },
+    allowedModels: value.allowedModels.map(route => ({ ...route })),
+  }
+}
+
 /** Singleton settings owner read by delegation tools when an Agent is published. */
 export class SubagentModelSelectionConfig extends Service {
-  static Config: z<Config> = z.object({
-    runtimeProvider: z.string().min(1),
-    enabled: z.boolean().default(false),
-    // Prevent Schemastery from materializing an omitted nested route as `{}`.
-    defaultSelection: SubagentModelSelectionSchema.default(undefined as unknown as SubagentModelSelection),
-    allowedModels: z.array(AllowedModelRouteSchema).default([]),
-  })
+  static Config: z<Config> = createSubagentModelSelectionSchema()
 
   private source: () => SubagentModelSelectionSettings
 
@@ -71,20 +84,11 @@ export class SubagentModelSelectionConfig extends Service {
     super(ctx, 'subagentModelSelection')
     // Cordis supplies the schema default; the fallback also covers direct construction.
     /* v8 ignore next */
-    const entry: SubagentModelSelectionSettings = {
-      ...config.runtimeProvider === undefined ? {} : { runtimeProvider: config.runtimeProvider },
+    const entry = detach({
+      ...config,
       enabled: config.enabled ?? false,
-      ...config.defaultSelection === undefined ? {} : {
-        defaultSelection: {
-          provider: config.defaultSelection.provider,
-          model: config.defaultSelection.model,
-          ...config.defaultSelection.reasoningEffort === undefined
-            ? {}
-            : { reasoningEffort: config.defaultSelection.reasoningEffort },
-        },
-      },
       allowedModels: config.allowedModels ?? [],
-    }
+    })
     this.validate(entry)
     this.source = () => entry
     installSettingsSection(
@@ -108,20 +112,7 @@ export class SubagentModelSelectionConfig extends Service {
    */
   current(): SubagentModelSelectionSettings {
     const current = this.source()
-    return {
-      ...current.runtimeProvider === undefined ? {} : { runtimeProvider: current.runtimeProvider },
-      enabled: current.enabled,
-      ...current.defaultSelection === undefined ? {} : {
-        defaultSelection: {
-          provider: current.defaultSelection.provider,
-          model: current.defaultSelection.model,
-          ...current.defaultSelection.reasoningEffort === undefined
-            ? {}
-            : { reasoningEffort: current.defaultSelection.reasoningEffort },
-        },
-      },
-      allowedModels: current.allowedModels.map(route => ({ ...route })),
-    }
+    return detach(current)
   }
 
   private validate(value: SubagentModelSelectionSettings): void {

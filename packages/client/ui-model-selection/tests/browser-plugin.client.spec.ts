@@ -255,12 +255,14 @@ describe('ui-model-selection dual entry', () => {
     b.ctx.emit('connection/reset')
     expect(face.directory.getSnapshot()).toMatchObject({
       current: { provider: 'deepseek-official', model: 'deepseek-v4-pro' },
-      status: 'ready',
+      status: 'loading',
     })
     face.load()
-    expect(face.directory.getSnapshot()).toMatchObject({
-      current: { provider: 'deepseek-official', model: 'deepseek-v4-pro' },
-      status: 'ready',
+    await vi.waitFor(() => {
+      expect(face.directory.getSnapshot()).toMatchObject({
+        current: { provider: 'deepseek-official', model: 'deepseek-v4-pro' },
+        status: 'ready',
+      })
     })
   })
 
@@ -277,8 +279,8 @@ describe('ui-model-selection dual entry', () => {
       next: { provider: 'deepseek-official', model: 'deepseek-v4-pro' },
     })
     expect(face.directory.getSnapshot()).toMatchObject({
-      current: { provider: 'deepseek-official', model: 'deepseek-v4-flash' },
-      status: 'ready',
+      current: { provider: 'deepseek-official', model: 'deepseek-v4-pro' },
+      status: 'loading',
     })
 
     await vi.waitFor(() => {

@@ -43,6 +43,10 @@ The Session row's Rename action opens a dialog prefilled with the row's display 
 
 Session rows render the runtime's live `pendingInteraction` classification: approvals report **Waiting for approval**, plan reviews report **Plan awaiting review**, and ordinary questions report **Waiting for answer**. Every pending interaction uses an amber warning dot that takes precedence over the running indicator.
 
+### Large workspace lists
+
+The default grouped projection shows only five non-blank Sessions per Workspace. Flat results and expanded groups can still contain many rows, so each Session row uses `content-visibility: auto` with a 32 px intrinsic fallback. The browser can skip offscreen style, layout, and paint work while the full DOM remains available for keyboard navigation, drag/drop, hover cards, and tree semantics. This is containment, not row virtualization: the row identity and interaction surface stay stable.
+
 -----
 
 <a id="understand-the-implementation"></a>

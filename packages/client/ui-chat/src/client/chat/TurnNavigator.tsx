@@ -53,6 +53,47 @@ function itemAtPointer(
   return items[Math.round(ratio * (items.length - 1))]
 }
 
+interface TurnMarkProps {
+  readonly item: TurnNavigationItem
+  readonly index: number
+  readonly count: number
+  readonly active: boolean
+  readonly showingPreview: boolean
+  readonly previewId: string
+  readonly onNavigate: (item: TurnNavigationItem) => void
+  readonly onPreview: (turn: number | null) => void
+  readonly t: ChatViewSlotProps['t']
+}
+
+/** One rail mark. Memoized because an active-turn change re-renders the rail on
+ * every scroll frame; without the guard each mark rebuilds its positioned
+ * style object and rewrites it to the DOM, which a long session pays per
+ * frame across every mark. */
+const TurnMark = memo(function TurnMark({
+  item, index, count, active, showingPreview, previewId, onNavigate, onPreview, t,
+}: TurnMarkProps) {
+  const markClass = active
+    ? `${css.mark} ${css.markActive}`
+    : showingPreview ? `${css.mark} ${css.markPreview}` : css.mark
+  return (
+    <div className={css.markPosition} style={itemPosition(index, count)}>
+      <button
+        type="button"
+        className={markClass}
+        aria-label={t('chat.turnNavigation.jump', { turn: item.turn })}
+        aria-current={active ? 'true' : undefined}
+        aria-describedby={showingPreview ? previewId : undefined}
+        onClick={(event) => {
+          event.stopPropagation()
+          onNavigate(item)
+        }}
+        onFocus={() => { onPreview(item.turn) }}
+        onBlur={() => { onPreview(null) }}
+      />
+    </div>
+  )
+})
+
 function TurnNavigatorRail({ items, activeTurn, onNavigate, t }: TurnNavigatorProps) {
   const [previewTurn, setPreviewTurn] = useState<number | null>(null)
   const previewId = useId()
@@ -78,30 +119,20 @@ function TurnNavigatorRail({ items, activeTurn, onNavigate, t }: TurnNavigatorPr
         onPointerLeave={() => { setPreviewTurn(null) }}
       >
         <div className={css.marks}>
-          {items.map((item, index) => {
-            const active = item.turn === activeTurn
-            const showingPreview = item.turn === previewTurn
-            const markClass = active
-              ? `${css.mark} ${css.markActive}`
-              : showingPreview ? `${css.mark} ${css.markPreview}` : css.mark
-            return (
-              <div key={item.turn} className={css.markPosition} style={itemPosition(index, items.length)}>
-                <button
-                  type="button"
-                  className={markClass}
-                  aria-label={t('chat.turnNavigation.jump', { turn: item.turn })}
-                  aria-current={active ? 'true' : undefined}
-                  aria-describedby={showingPreview ? previewId : undefined}
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    onNavigate(item)
-                  }}
-                  onFocus={() => { setPreviewTurn(item.turn) }}
-                  onBlur={() => { setPreviewTurn(null) }}
-                />
-              </div>
-            )
-          })}
+          {items.map((item, index) => (
+            <TurnMark
+              key={item.turn}
+              item={item}
+              index={index}
+              count={items.length}
+              active={item.turn === activeTurn}
+              showingPreview={item.turn === previewTurn}
+              previewId={previewId}
+              onNavigate={onNavigate}
+              onPreview={setPreviewTurn}
+              t={t}
+            />
+          ))}
         </div>
         {preview !== undefined && previewPosition !== undefined && (
           <div id={previewId} role="tooltip" className={css.preview} style={previewPosition}>

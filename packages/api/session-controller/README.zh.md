@@ -31,6 +31,8 @@ Client adapter 提供 `SessionEventStream`，即绑定到一个普通 Session �
 
 Session list snapshot 会保留未变化 Session id 的原有 row object，因此 refresh 不会使整个 sidebar item 集合失效。identity cache 会在同一轮 row 遍历中索引当前 id，并在线性时间内移除缺失 id。已接受的 projection value 保持现有 publication cadence；过期或重复的 projection frame，以及不改变 list state 的 lifecycle mutation，都保持静默；list consumer 应继续使用 metadata snapshot 来渲染列表，不要只为显示列表就打开每个 Session。
 
+`modelCatalog` Remote 是按 Host 代次缓存的，并且共享一份进行中的读取。重复挂载的 selector 会收到同一份值，不会重复执行提供方发现。LLM 适配器、settings 文档或 credential reference 变化会使该代次失效。默认情况下，每个提供方的目录读取有 2,500 ms 截止时间；超时或失败的提供方会成为独立 failure，其余提供方分组仍可用。只有在部署明确接受无界提供方读取时，才将 `modelCatalogProviderTimeoutMs` 设为 `0`。
+
 Session 对象还承载本地提交回显：`session.beginSubmission` 在调用方序列化与 prompt 之前，同步把一条回显写入 `SessionSnapshot.pendingSubmissions`，会话 UI 因此能在点击提交的当帧显示消息。prompt 的 `requestId` 就是关联标识，Host 本就把它回显为 durable user source 的 `rpcId`，queue occurrence 也把它投影为 `SessionQueuedItem.rpcId`。回显在观察到其 durable event 或 queue occurrence 后延迟一个动画帧退休（该延迟保证 transcript 节点可渲染之前回显仍在），带标识的 prompt 失败或被放弃时立即退休，销毁时按 failed 退休；每次退休恰好触发一次注册的 `onRetire` 回调。回显只存在于 Client 内存，刷新与重连只从 durable event 重建会话。
 
 -----
@@ -41,6 +43,7 @@ Session 对象还承载本地提交回显：`session.beginSubmission` 在调用�
 | 字段 | 默认值 | 含义 |
 |---|---:|---|
 | `coldBlankProbeMaxBytes` | `1,024` | 可进行空白状态验证的冷 Session 工件最大物理大小；`0` 禁用探测 |
+| `modelCatalogProviderTimeoutMs` | `2,500` | 单个提供方建议模型目录读取的截止时间；`0` 禁用截止时间 |
 | `nativeOpen` | 平台探测 | 是否能把 Session 工作区路径交给原生桌面打开器 |
 
 生成的[配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-api-session-controller)是所有受支持字段及其 JSDoc 的完整来源。

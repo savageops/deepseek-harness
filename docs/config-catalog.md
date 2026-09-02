@@ -301,12 +301,14 @@ Requires: `agentDefaultModel` · `agents` · `attachments` · `llm` · `sessions
 export interface Config {
   /** Maximum cold Session artifact size eligible for one full projection observation. */
   readonly coldBlankProbeMaxBytes?: number
+  /** Deadline for one provider's advisory model-catalog read; zero disables it. */
+  readonly modelCatalogProviderTimeoutMs?: number
   /** Override platform desktop-opener detection. */
   readonly nativeOpen?: boolean
 }
 ```
 
-Source: [`packages/api/session-controller/src/index.ts:67`](../packages/api/session-controller/src/index.ts)
+Source: [`packages/api/session-controller/src/index.ts:72`](../packages/api/session-controller/src/index.ts)
 
 <a id="deepseek-aidsh-api-settings-controller"></a>
 

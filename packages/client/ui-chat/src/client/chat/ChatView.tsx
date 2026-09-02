@@ -2,6 +2,7 @@
 // otherwise this view owns it. Each row subscribes to one stable node key.
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { defaultRangeExtractor, useVirtualizer, type Range } from '@tanstack/react-virtual'
 import type {
   ConversationTimelineSnapshot, RenderMessageImages,
 } from '@deepseek-ai/dsh-client-ui-conversation/client'
@@ -15,6 +16,12 @@ import { formatRunDuration } from './message-chrome.ts'
 import css from './ChatView.module.css'
 
 const FOLLOW_THRESHOLD = 24
+const CHAT_VIRTUALIZATION_THRESHOLD = 100
+const CHAT_VIRTUAL_OVERSCAN_ROWS = 12
+const CHAT_VIRTUAL_INITIAL_VIEWPORT_HEIGHT_PX = 600
+const CHAT_VIRTUAL_ESTIMATED_ROW_HEIGHT_PX = 160
+const CHAT_VIRTUAL_LIVE_TAIL_ROWS = 3
+const CHAT_SCROLL_RESTORE_TOLERANCE_PX = 1
 
 /** Active column host when present; otherwise the view-local scroller. */
 function scrollerOf(from: HTMLElement): HTMLElement {
@@ -88,7 +95,7 @@ function pagingAnchor(list: HTMLElement, scrollport: HTMLElement): HTMLElement |
     }
   }
   const rows = list.querySelectorAll<HTMLElement>(
-    '[data-chat-flow] > [data-chat-flow-key]:not(:empty):not([hidden])',
+    '[data-chat-flow-key]:not(:empty):not([hidden])',
   )
   let low = 0
   let high = rows.length
@@ -281,9 +288,15 @@ export function ChatView({
 
   const listRef = useRef<HTMLDivElement | null>(null)
   const columnRef = useRef<HTMLDivElement | null>(null)
+  const [initialScrollPosition] = useState<ChatScrollPosition | null>(() => chatScroll.read())
   // A saved position starts disarmed; the first layout effect synchronously
   // restores it and normalizes a floor-clamped position back to following.
-  const [atBottom, setAtBottom] = useState(() => chatScroll.read() === null)
+  const [atBottom, setAtBottom] = useState(() => initialScrollPosition === null)
+  // Reflow changes row coordinates without changing the virtual range. This
+  // epoch is only for an off-bottom view, so a pinned transcript does not pay
+  // for a restore render on every ordinary composer resize.
+  const [layoutEpoch, setLayoutEpoch] = useState(0)
+  const layoutRestorePendingRef = useRef(false)
   const atBottomRef = useRef(atBottom)
   const [activeTurn, setActiveTurn] = useState<number | null>(
     () => turnNavigationItems.at(-1)?.turn ?? null,
@@ -293,6 +306,14 @@ export function ChatView({
   /** Paging anchor: semantic row/position at click, updated by reader scrolls
    * while the request is pending and restored after the prepend lands. */
   const anchorRef = useRef<PagingAnchor | null>(null)
+  /** A virtual row can move again as newly mounted heights are measured. */
+  const pendingPrependAnchorRef = useRef<PagingAnchor | null>(null)
+  /** Keep a saved row mounted until a reader gesture releases authored scroll. */
+  const restoreAnchorKeyRef = useRef(initialScrollPosition?.anchorKey ?? null)
+  /** One automatic older-page request per newly exposed history boundary. */
+  const restorePageRequestRef = useRef<{ key: string; firstSeq: number | null } | null>(null)
+  /** Keep a navigation target mounted while an estimated scroll lands on it. */
+  const navigationAnchorKeyRef = useRef<string | null>(null)
   const firstSeqRef = useRef<number | null>(null)
   const openedRef = useRef(false)
   const lastKeyRef = useRef<string | null>(null)
@@ -302,6 +323,80 @@ export function ChatView({
    *  scroll-driven at-bottom chrome re-render (which would snap inertial
    *  scrolls the rest of the way to the floor). */
   const followSigRef = useRef<string | null>(null)
+
+  const chatVirtualizationEnabled = order.length > CHAT_VIRTUALIZATION_THRESHOLD
+  const chatOrderRef = useRef(order)
+  chatOrderRef.current = order
+  const chatScrollRef = useRef(chatScroll)
+  chatScrollRef.current = chatScroll
+  const rangeExtractor = useCallback((range: Range): number[] => {
+    const indexes = new Set(defaultRangeExtractor(range))
+    for (const key of [
+      anchorRef.current?.key,
+      pendingPrependAnchorRef.current?.key,
+      restoreAnchorKeyRef.current,
+      navigationAnchorKeyRef.current,
+      chatScrollRef.current.read()?.anchorKey,
+    ]) {
+      if (key === undefined || key === null) continue
+      const index = chatOrderRef.current.indexOf(key)
+      if (index >= 0) indexes.add(index)
+    }
+    // Keep the live tail addressable while a reader is scrolled away. The
+    // completed assistant can be followed by a turn-tail after settlement, so
+    // reserve a tiny suffix rather than only the current last index. This is
+    // O(1) extra DOM, not a second rendered history.
+    const tailStart = Math.max(0, chatOrderRef.current.length - CHAT_VIRTUAL_LIVE_TAIL_ROWS)
+    for (let index = tailStart; index < chatOrderRef.current.length; index += 1) indexes.add(index)
+    return [...indexes].sort((left, right) => left - right)
+  }, [])
+  const getChatScrollElement = useCallback(() => {
+    const local = listRef.current
+    return local === null ? null : scrollerOf(local)
+  }, [])
+  const chatVirtualizer = useVirtualizer<HTMLElement, HTMLDivElement>({
+    count: chatVirtualizationEnabled ? order.length : 0,
+    enabled: chatVirtualizationEnabled,
+    estimateSize: () => CHAT_VIRTUAL_ESTIMATED_ROW_HEIGHT_PX,
+    getItemKey: index => order[index] ?? index,
+    getScrollElement: getChatScrollElement,
+    initialRect: { width: 0, height: CHAT_VIRTUAL_INITIAL_VIEWPORT_HEIGHT_PX },
+    initialOffset: () => {
+      // A session can cross the threshold while the reader is paging at the
+      // head. Preserve the live scroll owner when the virtualizer switches on;
+      // use the estimated tail only for a first mount with no DOM offset yet.
+      const local = listRef.current
+      if (local !== null) return scrollerOf(local).scrollTop
+      return Math.max(
+        0,
+        order.length * CHAT_VIRTUAL_ESTIMATED_ROW_HEIGHT_PX - CHAT_VIRTUAL_INITIAL_VIEWPORT_HEIGHT_PX,
+      )
+    },
+    // Chat owns prepend preservation through its semantic row anchor below;
+    // a second virtualizer end-anchor would fight that correction when a page
+    // adds nodes at the head.
+    anchorTo: 'start',
+    overscan: CHAT_VIRTUAL_OVERSCAN_ROWS,
+    rangeExtractor,
+  })
+  // This hook is not part of the public options type, but the virtualizer
+  // exposes the policy as a mutable instance hook. The semantic prepend ledger
+  // owns these transitions: applying the virtualizer's estimate-to-measured
+  // correction as well applies the same height change twice and ejects the
+  // reader from the saved row. Normal user scrolling retains the default.
+  chatVirtualizer.shouldAdjustScrollPositionOnItemSizeChange = () => (
+    anchorRef.current === null &&
+    pendingPrependAnchorRef.current === null &&
+    restoreAnchorKeyRef.current === null &&
+    navigationAnchorKeyRef.current === null
+  )
+  const chatVirtualItems = chatVirtualizationEnabled
+    ? chatVirtualizer.getVirtualItems()
+    : []
+  const chatVirtualizerIsScrolling = chatVirtualizer.isScrolling
+  const chatVirtualTotalSize = chatVirtualizationEnabled
+    ? chatVirtualizer.getTotalSize()
+    : 0
 
   const firstKey = order[0]
   const firstSeq = firstKey === undefined ? null : nodeStore.get(firstKey)?.anchorSeq ?? null
@@ -365,6 +460,8 @@ export function ChatView({
 
   const toBottom = (el: HTMLElement): void => {
     anchorRef.current = null
+    restoreAnchorKeyRef.current = null
+    navigationAnchorKeyRef.current = null
     el.scrollTop = el.scrollHeight
     observedTopRef.current = el.scrollTop
     atBottomRef.current = true
@@ -382,14 +479,41 @@ export function ChatView({
     // survives from a previous mount (view-tab switch away and back), which
     // is restored instead of snapping the reader back to the floor.
     if (openState === 'open' && !openedRef.current) {
-      openedRef.current = true
-      const saved = chatScroll.read()
+      const saved = initialScrollPosition
       if (saved === null) {
+        openedRef.current = true
         toBottom(el)
       } else {
         el.scrollTop = saved.scrollTop
         const row = anchorElement(local, saved.anchorKey)
-        if (row !== null) el.scrollTop += flowTop(row, el) - saved.anchorTop
+        if (row === null) {
+          const index = chatVirtualizationEnabled ? order.indexOf(saved.anchorKey) : -1
+          if (index >= 0) {
+            chatVirtualizer.scrollToIndex(index, { behavior: 'auto', align: 'center' })
+          } else if (hasMore && !loadingOlder) {
+            // A saved reader position can point into a page that is not part
+            // of a fresh session open. Pull pages until the semantic row is
+            // exposed; restoring to the current tail would lose the user's
+            // position on every session/tab round-trip.
+            const request = restorePageRequestRef.current
+            if (request?.key !== saved.anchorKey || request.firstSeq !== firstSeq) {
+              restorePageRequestRef.current = { key: saved.anchorKey, firstSeq }
+              loadOlder()
+            }
+          } else {
+            // The saved row may have been removed by a branch or retention
+            // policy. A completed open still needs an owner; follow the tail
+            // rather than leaving the view permanently in its pre-open state.
+            openedRef.current = true
+            restoreAnchorKeyRef.current = null
+            restorePageRequestRef.current = null
+            toBottom(el)
+          }
+          return
+        }
+        openedRef.current = true
+        restorePageRequestRef.current = null
+        el.scrollTop += flowTop(row, el) - saved.anchorTop
         observedTopRef.current = el.scrollTop
         const isAtBottom = el.scrollHeight - el.scrollTop - el.clientHeight <= FOLLOW_THRESHOLD + 1
         atBottomRef.current = isAtBottom
@@ -411,8 +535,14 @@ export function ChatView({
     if (anchorRef.current !== null && firstSeq !== null && firstSeqRef.current !== null && firstSeq < firstSeqRef.current) {
       const anchor = anchorRef.current
       anchorRef.current = null
+      if (chatVirtualizationEnabled) {
+        pendingPrependAnchorRef.current = anchor
+      }
       const row = anchorElement(local, anchor.key)
-      if (row !== null) el.scrollTop += flowTop(row, el) - anchor.top
+      if (row !== null) {
+        const delta = flowTop(row, el) - anchor.top
+        el.scrollTop += delta
+      }
       observedTopRef.current = el.scrollTop
       firstSeqRef.current = firstSeq
       /* v8 ignore next -- ?? arm: a prepend adds nodes, so the flow list here is never empty. */
@@ -438,12 +568,132 @@ export function ChatView({
     if (appendedUser || appendedSteering || appendedSubmission || (tipMoved && atBottomRef.current)) toBottom(el)
   })
 
+  // The first open can run before the virtualizer has committed its estimated
+  // flow height. Re-apply the pinned bottom after that height exists and emit
+  // the same scroll signal the virtualizer would receive from user input, so
+  // its internal range starts at the tail rather than at index zero.
+  useLayoutEffect(() => {
+    if (!chatVirtualizationEnabled || openState !== 'open' || !openedRef.current || !atBottomRef.current) return
+    const local = listRef.current
+    if (local === null || chatVirtualTotalSize <= 0) return
+    const el = scrollerOf(local)
+    const floor = Math.max(0, el.scrollHeight - el.clientHeight)
+    if (el.scrollTop >= floor) return
+    el.scrollTop = floor
+    observedTopRef.current = el.scrollTop
+    el.dispatchEvent(new Event('scroll'))
+  }, [chatVirtualTotalSize, chatVirtualizationEnabled, openState])
+
+  // Dynamic markdown, tool output, and image rows can revise measurements over
+  // several commits after a prepend. Reconcile the semantic anchor against the
+  // virtualizer's current range for as long as the reader remains on that
+  // page. The ledger is released only by a subsequent reader scroll; a fixed
+  // number of "stable" frames is unsafe because content-visibility and late
+  // media measurement can revise an already apparently settled total later.
+  // The native scroll owner receives each correction and the virtualizer learns
+  // the offset through its ordinary scroll observer.
+  useLayoutEffect(() => {
+    const pending = pendingPrependAnchorRef.current
+    if (!chatVirtualizationEnabled || pending === null) return
+    const local = listRef.current
+    if (local === null) return
+    const el = scrollerOf(local)
+    const row = anchorElement(local, pending.key)
+    if (row === null) return
+    const delta = flowTop(row, el) - pending.top
+    if (Math.abs(delta) > 0.5) {
+      el.scrollTop += delta
+      observedTopRef.current = el.scrollTop
+    }
+  }, [chatVirtualItems, chatVirtualTotalSize, chatVirtualizationEnabled, chatVirtualizer, order])
+
+  // A View can stay resident while another conversation tab is shown. Its
+  // scrollport may be remeasured at the tail while hidden, so the mount-only
+  // restore above does not run when it becomes visible again. Reconcile the
+  // current per-session semantic position whenever the virtual range returns.
+  useLayoutEffect(() => {
+    if (!chatVirtualizationEnabled || !openedRef.current || atBottomRef.current) return
+    const saved = chatScrollRef.current.read()
+    if (saved === null) return
+    const local = listRef.current
+    if (local === null) return
+    const el = scrollerOf(local)
+    const floor = Math.max(0, el.scrollHeight - el.clientHeight)
+    const restoreFromLayout = layoutRestorePendingRef.current
+    layoutRestorePendingRef.current = false
+    // The virtualizer publishes its range before Chat's passive scroll ledger
+    // runs. A reader scroll can therefore render this effect while the saved
+    // semantic position still describes the previous frame. Do not restore
+    // that stale position over live reader input; the ledger will save the new
+    // anchor when the event listener runs. Hidden remeasurement is not marked
+    // as scrolling and still takes the resident-restore path below.
+    if (
+      !restoreFromLayout &&
+      chatVirtualizer.isScrolling &&
+      anchorRef.current === null &&
+      pendingPrependAnchorRef.current === null &&
+      Math.abs(el.scrollTop - Math.min(observedTopRef.current, floor)) >
+        CHAT_SCROLL_RESTORE_TOLERANCE_PX
+    ) return
+    const row = anchorElement(local, saved.anchorKey)
+    if (row === null) {
+      const index = order.indexOf(saved.anchorKey)
+      if (index >= 0) {
+        restoreAnchorKeyRef.current = saved.anchorKey
+        chatVirtualizer.scrollToIndex(index, { behavior: 'auto', align: 'center' })
+      } else if (hasMore && !loadingOlder) {
+        const request = restorePageRequestRef.current
+        if (request?.key !== saved.anchorKey || request.firstSeq !== firstSeq) {
+          restorePageRequestRef.current = { key: saved.anchorKey, firstSeq }
+          loadOlder()
+        }
+      }
+      return
+    }
+    const delta = flowTop(row, el) - saved.anchorTop
+    if (Math.abs(delta) > CHAT_SCROLL_RESTORE_TOLERANCE_PX) {
+      el.scrollTop += delta
+      observedTopRef.current = el.scrollTop
+    }
+  }, [
+    chatVirtualItems,
+    chatVirtualizationEnabled,
+    chatVirtualizer,
+    chatVirtualizerIsScrolling,
+    firstSeq,
+    hasMore,
+    layoutEpoch,
+    loadingOlder,
+    loadOlder,
+    order,
+  ])
+
+  useLayoutEffect(() => {
+    const local = listRef.current
+    const key = navigationAnchorKeyRef.current
+    if (local === null || key === null) return
+    // Keep the target addressable until the next reader gesture releases the
+    // authored-scroll guard. Clearing it as soon as the row mounts lets late
+    // virtual measurements look like reader input and overwrite the saved
+    // session anchor.
+    if (anchorElement(local, key) === null) return
+  }, [chatVirtualItems, chatVirtualizationEnabled, chatVirtualizer, chatVirtualizerIsScrolling, order])
+
   const onScrollRef = useRef(() => {})
   onScrollRef.current = () => {
     const local = listRef.current
     /* v8 ignore next -- ref-null guard: the handler only fires while mounted. */
     if (local === null) return
     const el = scrollerOf(local)
+    // `scrollToIndex` is an authored move, but its native scroll event arrives
+    // through the same observer as a wheel/touch/keyboard move. Keep that
+    // transient geometry out of the per-session semantic ledger; the restore
+    // a reader gesture releases the arm after the target row is mounted and corrected.
+    if (restoreAnchorKeyRef.current !== null || navigationAnchorKeyRef.current !== null) {
+      observedTopRef.current = el.scrollTop
+      scheduleActiveTurn()
+      return
+    }
     // Only reader input may make raw scroll geometry change follow ownership:
     // a delivered position that deviates from the observed-top ledger (every
     // programmatic write records itself there synchronously). This covers
@@ -453,6 +703,12 @@ export function ChatView({
     // the current ownership state.
     const floor = Math.max(0, el.scrollHeight - el.clientHeight)
     const movedByReader = Math.abs(el.scrollTop - Math.min(observedTopRef.current, floor)) > 0.5
+    // A prepend may need a few layout passes to settle dynamic rows, but a
+    // subsequent reader scroll owns the viewport immediately. Do not let a
+    // stale semantic correction pull the reader back toward the old anchor.
+    if (movedByReader && pendingPrependAnchorRef.current !== null) {
+      pendingPrependAnchorRef.current = null
+    }
     const isAtBottom = movedByReader
       ? floor - el.scrollTop <= FOLLOW_THRESHOLD + 1
       : atBottomRef.current
@@ -484,10 +740,22 @@ export function ChatView({
     /* v8 ignore next -- ref-null guard: effect runs after the list node commits. */
     if (local === null) return
     const el = scrollerOf(local)
+    const releaseAuthoredScroll = (): void => {
+      restoreAnchorKeyRef.current = null
+      navigationAnchorKeyRef.current = null
+    }
     const onScroll = (): void => { onScrollRef.current() }
     el.addEventListener('scroll', onScroll, { passive: true })
+    el.addEventListener('wheel', releaseAuthoredScroll, { passive: true })
+    el.addEventListener('touchstart', releaseAuthoredScroll, { passive: true })
+    el.addEventListener('pointerdown', releaseAuthoredScroll, { passive: true })
+    el.addEventListener('keydown', releaseAuthoredScroll, { passive: true })
     return () => {
       el.removeEventListener('scroll', onScroll)
+      el.removeEventListener('wheel', releaseAuthoredScroll)
+      el.removeEventListener('touchstart', releaseAuthoredScroll)
+      el.removeEventListener('pointerdown', releaseAuthoredScroll)
+      el.removeEventListener('keydown', releaseAuthoredScroll)
     }
   }, [])
 
@@ -516,6 +784,10 @@ export function ChatView({
     // reading line without a scroll event, so the active mark resyncs here too.
     const observer = new ResizeObserver(() => {
       followRef.current?.()
+      if (!atBottomRef.current) {
+        layoutRestorePendingRef.current = true
+        setLayoutEpoch(epoch => epoch + 1)
+      }
       activeTurnRef.current?.()
     })
     observer.observe(column)
@@ -549,8 +821,22 @@ export function ChatView({
   const navigateToTurn = useCallback((item: TurnNavigationItem): void => {
     const local = listRef.current
     if (local === null) return
+    navigationAnchorKeyRef.current = item.anchorKey
     const row = anchorElement(local, item.anchorKey)
-    if (row === null) return
+    if (row === null) {
+      const index = chatVirtualizationEnabled ? order.indexOf(item.anchorKey) : -1
+      if (index < 0) return
+      const el = scrollerOf(local)
+      // The ordinary path jumps directly to the semantic row. Keep the same
+      // contract for an offscreen virtual row so the scroll-frame active-turn
+      // sampler cannot overwrite aria-current during a long smooth animation.
+      chatVirtualizer.scrollToIndex(index, { behavior: 'auto', align: 'center' })
+      observedTopRef.current = el.scrollTop
+      atBottomRef.current = false
+      setAtBottom(false)
+      setActiveTurn(item.turn)
+      return
+    }
     const el = scrollerOf(local)
     el.scrollTop += flowTop(row, el) - 24
     observedTopRef.current = el.scrollTop
@@ -567,7 +853,31 @@ export function ChatView({
     const position = isAtBottom ? null : scrollPosition(local, el)
     if (isAtBottom) chatScroll.save(null)
     else if (position !== null) chatScroll.save(position)
-  }, [loadingOlder, chatScroll])
+  }, [chatScroll, chatVirtualizationEnabled, chatVirtualizer, loadingOlder, order])
+
+  const renderChatNode = useCallback((nodeKey: string) => (
+    <ChatNodeSeat
+      key={nodeKey}
+      nodeKey={nodeKey}
+      historyIncomplete={hasMore}
+      compactTranscript={compactTranscript}
+      useChat={useChat}
+      useStore={useStore}
+      actions={actions}
+      selectedCallId={selectedCallId}
+      cwd={cwd}
+      openFile={requestOpenFile}
+      inspectCall={inspectCall}
+      forkAt={forkAt}
+      renderMessageImages={renderMessageImages}
+      fileMentions={fileMentions}
+      renderSlot={renderSlot}
+      t={t}
+    />
+  ), [
+    actions, compactTranscript, cwd, fileMentions, forkAt, hasMore, inspectCall,
+    renderMessageImages, renderSlot, requestOpenFile, selectedCallId, t, useChat, useStore,
+  ])
 
   return (
     <div className={css.root}>
@@ -592,26 +902,34 @@ export function ChatView({
               </button>
             </div>
           )}
-          {order.map(nodeKey => (
-            <ChatNodeSeat
-              key={nodeKey}
-              nodeKey={nodeKey}
-              historyIncomplete={hasMore}
-              compactTranscript={compactTranscript}
-              useChat={useChat}
-              useStore={useStore}
-              actions={actions}
-              selectedCallId={selectedCallId}
-              cwd={cwd}
-              openFile={requestOpenFile}
-              inspectCall={inspectCall}
-              forkAt={forkAt}
-              renderMessageImages={renderMessageImages}
-              fileMentions={fileMentions}
-              renderSlot={renderSlot}
-              t={t}
-            />
-          ))}
+          {chatVirtualizationEnabled
+            ? (
+              <div
+                className={css.virtualFlow}
+                data-chat-virtual-flow=""
+                style={{ height: chatVirtualizer.getTotalSize() }}
+              >
+                {chatVirtualItems.flatMap((item) => {
+                  const nodeKey = order[item.index]
+                  if (nodeKey === undefined) return []
+                  return [
+                    <div
+                      key={item.key}
+                      ref={chatVirtualizer.measureElement}
+                      className={css.virtualRow}
+                      data-chat-virtual-row=""
+                      data-chat-virtual-tail={item.index >= Math.max(0, order.length - CHAT_VIRTUAL_LIVE_TAIL_ROWS) || undefined}
+                      data-chat-virtual-leading-gap={item.index > 0 || undefined}
+                      data-index={item.index}
+                      style={{ transform: `translateY(${String(item.start)}px)` }}
+                    >
+                      {renderChatNode(nodeKey)}
+                    </div>,
+                  ]
+                })}
+              </div>
+            )
+            : order.map(nodeKey => renderChatNode(nodeKey))}
           {/* No pending placeholders: questions (ui-user-questions) and approvals
               (ApprovalPanel) both take over the composer, so a flow card would
               double-render the same wait. */}

@@ -27,6 +27,7 @@
     { "path": "../../core/agent-default-model" },
     { "path": "../../core/scope" },
     { "path": "../../core/session" },
+    { "path": "../../credentials/credentials" },
     { "path": "../../context/file-reference" },
     { "path": "../../attachment/attachment" },
     { "path": "../../interaction/permission-presets" },

@@ -90,4 +90,33 @@ describe('ModelCatalogDirectory', () => {
       })
     })
   })
+
+  it('coalesces a burst of Host changes during one read into one trailing refresh', async () => {
+    const first = Promise.withResolvers<unknown>()
+    const second = Promise.withResolvers<unknown>()
+    const models = vi.fn()
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise)
+    const subject = directory(models)
+
+    const pending = subject.load()
+    subject.refresh()
+    subject.refresh()
+    subject.refresh()
+    expect(models).toHaveBeenCalledTimes(1)
+
+    first.resolve({ ok: true, value: catalog('stale-but-safe') })
+    await expect(pending).resolves.toEqual(catalog('stale-but-safe'))
+    await vi.waitFor(() => { expect(models).toHaveBeenCalledTimes(2) })
+    expect(subject.store.getSnapshot()).toMatchObject({
+      value: catalog('stale-but-safe'), status: 'loading', error: null,
+    })
+
+    second.resolve({ ok: true, value: catalog('fresh') })
+    await vi.waitFor(() => {
+      expect(subject.store.getSnapshot()).toMatchObject({
+        value: catalog('fresh'), status: 'ready', error: null,
+      })
+    })
+  })
 })

@@ -32,6 +32,7 @@ const reasoning = {
 function state(overrides: Partial<ModelDirectoryState> = {}): ModelDirectoryState {
   return {
     current: { provider: 'deepseek-official', model: 'deepseek-v4-flash' },
+    selectionSynced: true,
     routable: true,
     groups: [{
       id: 'deepseek-official',
@@ -142,7 +143,7 @@ describe('ModelSelect reasoning effort', () => {
     expect(screen.queryByText('Fast catalog description')).toBeNull()
   })
 
-  it('shows loading until the catalog and Session projection are both ready', async () => {
+  it('shows loading only before the catalog has an effective current selection', async () => {
     const directory = createSnapshotStore<ModelDirectoryState>(state({
       current: null,
       routable: null,

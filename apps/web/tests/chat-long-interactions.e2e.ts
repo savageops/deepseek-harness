@@ -177,6 +177,13 @@ describe('web e2e: long Chat interaction contract', () => {
     const source = scaffold.ctx.agents.get(SessionId(SESSION_ID))
     if (source === undefined) throw new Error('seeded long-history agent is not attached')
 
+    const virtualFlow = page.locator('[data-chat-virtual-flow]')
+    expect(await virtualFlow.count()).toBe(1)
+    const mountedRows = virtualFlow.locator('[data-chat-flow-key]')
+    const mountedRowCount = await mountedRows.count()
+    expect(mountedRowCount).toBeGreaterThan(0)
+    expect(mountedRowCount).toBeLessThan(FIXTURE_TURNS)
+
     const toolUserMarker = FIXTURE.markers.user(TOOL_TURN)
     const toolAssistantMarker = FIXTURE.markers.assistant(TOOL_TURN)
     const toolMarker1 = FIXTURE.markers.tool(TOOL_TURN, 1)
@@ -240,8 +247,10 @@ describe('web e2e: long Chat interaction contract', () => {
     await turnNavigation.waitFor({ state: 'hidden', timeout: 5_000 })
     await page.setViewportSize({ width: 1_680, height: 900 })
     await turnNavigation.waitFor({ state: 'visible', timeout: 5_000 })
-
-    await wheelUntilMounted(page, `[data-chat-call-id="${TARGET_CALL_2}"]`, -1_100)
+    // The old all-mounted renderer made this delta irrelevant. Virtualized
+    // histories now need forward reader input to reach the newest tool turn
+    // after the earlier-turn navigation above.
+    await wheelUntilMounted(page, `[data-chat-call-id="${TARGET_CALL_2}"]`, 1_100)
     const toolUserKey = messageKey(toolUserEvent)
     const toolAssistantKey = assistantKey(toolAssistantEvent)
     const toolUserRow = page.locator(`[data-chat-anchor-key="${toolUserKey}"]`)

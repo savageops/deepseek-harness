@@ -263,6 +263,15 @@ async function loadedFlowRows(page: Page): Promise<number> {
   return page.locator('[data-chat-flow-key]').count()
 }
 
+async function loadedFlowExtent(page: Page): Promise<number> {
+  const virtualHeight = await page.locator('[data-chat-virtual-flow]').evaluateAll((nodes) => {
+    return Math.max(0, ...nodes.map(node => (
+      node instanceof HTMLElement ? Number.parseFloat(node.style.height) || 0 : 0
+    )))
+  })
+  return Math.max(await loadedFlowRows(page), virtualHeight)
+}
+
 async function openSeed(page: Page, fixture: ChatScrollFixture, tailMarker?: string): Promise<void> {
   // Search collapsed into a header action; expand it before filling.
   const searchButton = page.getByRole('button', { name: 'Search sessions' })
@@ -434,14 +443,22 @@ async function loadEarlierWithAnchor(page: Page): Promise<void> {
   const loading = page.getByRole('button', { name: 'Loading…', exact: true })
   await older.waitFor({ timeout: 10_000 })
   const anchor = await visibleFlowAnchor(page)
-  const before = await loadedFlowRows(page)
+  const before = await loadedFlowExtent(page)
   await older.click()
   await expect.poll(async () => (
-    await loadedFlowRows(page) > before && await loading.count() === 0
+    await loadedFlowExtent(page) > before && await loading.count() === 0
   ), { timeout: 30_000 }).toBe(true)
   await nextPaint(page)
   if (await page.getByRole('button', { name: 'Load earlier', exact: true }).count() === 0) {
-    expect(await page.locator('[data-turn-process][aria-expanded="false"]').count()).toBeGreaterThan(0)
+    // A virtual transcript may keep the reader anchor around the last page
+    // while the older disclosure rows are outside the mounted window. The
+    // long-interaction contract owns disclosure behavior; this helper owns
+    // page exhaustion and anchor continuity.
+    if (await page.locator('[data-chat-virtual-flow]').count() > 0) {
+      expect(await page.locator('[data-chat-virtual-row]').count()).toBeGreaterThan(0)
+    } else {
+      expect(await page.locator('[data-turn-process][aria-expanded="false"]').count()).toBeGreaterThan(0)
+    }
     return
   }
   await expectSameFlowTop(page, anchor)

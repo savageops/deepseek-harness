@@ -338,6 +338,55 @@ describe('Web session model selection', () => {
     await ctx.fiber.dispose()
   })
 
+  it('shares concurrent catalog reads and invalidates the Host cache at registry change points', async () => {
+    const { ctx } = await harness()
+    const remote = createSessionTestRemote(ctx, {
+      defaultModelSelection: () => ({ provider: 'deepseek-official', model: 'deepseek-chat' }),
+      cwd: '/tmp',
+    })
+    const listModels = vi.spyOn(ctx.llm, 'listModels')
+    const providerCount = ctx.llm.listProviders().length
+
+    const [first, second] = await Promise.all([remote.modelCatalog(), remote.modelCatalog()])
+    expect(first.ok).toBe(true)
+    expect(second.ok).toBe(true)
+    if (first.ok && second.ok) expect(first.value).toBe(second.value)
+    expect(listModels).toHaveBeenCalledTimes(providerCount)
+
+    ctx.emit('llm/adapters-updated')
+    await expect(remote.modelCatalog()).resolves.toMatchObject({ ok: true })
+    expect(listModels).toHaveBeenCalledTimes(providerCount * 2)
+    await ctx.fiber.dispose()
+  })
+
+  it('contains a provider that never settles and leaves the other groups usable', async () => {
+    const { ctx } = await harness()
+    ctx.llm.registerAdapter(['plain'], new CatalogAdapter('Plain', [
+      { provider: 'plain', id: 'plain-model', name: 'Plain Model' },
+    ]))
+    const originalListModels = ctx.llm.listModels.bind(ctx.llm)
+    const listModels = vi.spyOn(ctx.llm, 'listModels').mockImplementation((provider) => {
+      if (provider === 'deepseek-official') {
+        return new Promise<LlmModelInfo[]>(() => {})
+      }
+      return originalListModels(provider)
+    })
+    const remote = createSessionTestRemote(ctx, {
+      defaultModelSelection: () => ({ provider: 'deepseek-official', model: 'deepseek-chat' }),
+      cwd: '/tmp',
+      modelCatalogProviderTimeoutMs: 10,
+    })
+
+    const catalog = expectValue(await remote.modelCatalog())
+    expect(catalog.groups.map(group => group.id)).toContain('plain')
+    expect(catalog.failures).toContainEqual(expect.objectContaining({
+      id: 'deepseek-official',
+      message: 'provider "deepseek-official" model catalog timed out after 10ms',
+    }))
+    listModels.mockRestore()
+    await ctx.fiber.dispose()
+  })
+
   it('preserves optional catalog metadata and string provider failures', async () => {
     const { ctx } = await harness()
     ctx.llm.registerAdapter(['plain'], new CatalogAdapter('Plain', [
@@ -350,7 +399,6 @@ describe('Web session model selection', () => {
     }))
     ctx.llm.registerAdapter(['string-failure'], new class extends CatalogAdapter {
       override listModels(): Promise<readonly LlmModelInfo[]> {
-        // oxlint-disable-next-line typescript/prefer-promise-reject-errors -- non-Error provider normalization is the scenario.
         return Promise.reject('string catalog failure')
       }
     }('String Failure', []))
@@ -609,7 +657,6 @@ describe('Web session model selection', () => {
     }('Image Capable', []))
     ctx.llm.registerAdapter(['string-error'], new class extends CatalogAdapter {
       override resolveModel(): Promise<LlmResolvedModelInfo> {
-        // oxlint-disable-next-line typescript/prefer-promise-reject-errors -- non-Error provider normalization is the scenario.
         return Promise.reject('string selection failure')
       }
     }('String Error', []))

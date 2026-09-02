@@ -17,6 +17,8 @@ import type { ModelCatalogDirectory } from './catalog.ts'
 export interface ModelDirectoryState {
   /** Effective selection: durable next-request projection, then Host default. */
   current: ModelSelection | null
+  /** Whether `current` is confirmed by the Session projection rather than the Host default. */
+  selectionSynced: boolean
   /**
    * Whether an adapter serves the current selection's provider, as the host reports
    * it — null before the first load, which is NOT the same as blocked. Read
@@ -39,7 +41,8 @@ export interface ModelDirectoryState {
 export class ModelDirectory {
   /** The shared snapshot both entries render from (uSES-safe store). */
   readonly store: SnapshotStore<ModelDirectoryState> = createSnapshotStore<ModelDirectoryState>({
-    current: null, routable: null, groups: [], failures: [], status: 'idle', error: null,
+    current: null, selectionSynced: false, routable: null,
+    groups: [], failures: [], status: 'idle', error: null,
   })
 
   /** Latest selection operation wins; an older response never overwrites a newer one. */
@@ -139,7 +142,20 @@ export class ModelDirectory {
     if (this.disposed) return
     const catalog = this.catalog.store.getSnapshot()
     const projected = modelSelectionProjection(this.projected.getSnapshot())
-    if (catalog.status !== 'ready' || catalog.value === null || projected === undefined) {
+    if (catalog.status !== 'ready' || catalog.value === null) {
+      const projectedCurrent = projected?.next ?? null
+      if (projectedCurrent !== null) {
+        this.store.set({
+          current: projectedCurrent,
+          selectionSynced: true,
+          routable: null,
+          groups: [],
+          failures: [],
+          status: catalog.status === 'error' ? 'error' : 'loading',
+          error: catalog.error,
+        })
+        return
+      }
       if (this.resolved) {
         if (catalog.status === 'error') {
           this.store.update((state) => {
@@ -151,6 +167,7 @@ export class ModelDirectory {
       }
       this.store.set({
         current: null,
+        selectionSynced: false,
         routable: null,
         groups: [],
         failures: [],
@@ -159,10 +176,12 @@ export class ModelDirectory {
       })
       return
     }
-    const current = projected.next ?? catalog.value.default
+    const selectionSynced = projected !== undefined
+    const current = projected?.next ?? catalog.value.default
     this.resolved = true
     this.store.set({
       current,
+      selectionSynced,
       routable: catalog.value.routableProviders.includes(current.provider),
       groups: catalog.value.groups,
       failures: catalog.value.failures,

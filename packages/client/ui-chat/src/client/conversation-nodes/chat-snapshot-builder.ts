@@ -199,33 +199,52 @@ interface TurnProcessPresentation {
   readonly earliestProcessAnchor?: number
 }
 
+/** Mutable accumulation record; presentations publish detached copies. */
+interface TurnProcessAccumulation {
+  control: ChatNode<'turn-process'> | undefined
+  openingHumanAnchor: number | undefined
+  earliestProcessAnchor: number | undefined
+}
+
 function turnProcessPresentations(
   nodes: readonly ChatConversationViewNode[],
 ): ReadonlyMap<number, TurnProcessPresentation> {
-  const presentations = new Map<number, TurnProcessPresentation>()
+  // This runs per structural change over the whole window, so accumulation
+  // mutates one record per Turn instead of spreading a fresh object per node.
+  const accumulating = new Map<number, TurnProcessAccumulation>()
+  const recordOf = (turn: number): TurnProcessAccumulation => {
+    let record = accumulating.get(turn)
+    if (record === undefined) {
+      record = { control: undefined, openingHumanAnchor: undefined, earliestProcessAnchor: undefined }
+      accumulating.set(turn, record)
+    }
+    return record
+  }
   for (const raw of nodes) {
     const node = raw as ChatNode
-    if (node.kind === 'turn-process') {
-      presentations.set(node.data.turn, { ...presentations.get(node.data.turn), control: node })
-    }
+    if (node.kind === 'turn-process') recordOf(node.data.turn).control = node
   }
   for (const raw of nodes) {
     const node = raw as ChatNode
     const location = node.location
     if (location.kind !== 'turn' && location.kind !== 'step') continue
-    const current: TurnProcessPresentation = presentations.get(location.turn.turn) ?? {}
+    const record = recordOf(location.turn.turn)
     if ((node.kind === 'user' || node.kind === 'steering')
-      && node.anchorSeq < (current.control?.data.controlAnchorSeq ?? Number.POSITIVE_INFINITY)) {
-      presentations.set(location.turn.turn, {
-        ...current,
-        openingHumanAnchor: Math.min(current.openingHumanAnchor ?? node.anchorSeq, node.anchorSeq),
-      })
+      && node.anchorSeq < (record.control?.data.controlAnchorSeq ?? Number.POSITIVE_INFINITY)) {
+      record.openingHumanAnchor = Math.min(record.openingHumanAnchor ?? node.anchorSeq, node.anchorSeq)
       continue
     }
     if (TURN_PROCESS_INDEPENDENT_KINDS.has(node.kind)) continue
-    presentations.set(location.turn.turn, {
-      ...current,
-      earliestProcessAnchor: Math.min(current.earliestProcessAnchor ?? node.anchorSeq, node.anchorSeq),
+    record.earliestProcessAnchor = Math.min(record.earliestProcessAnchor ?? node.anchorSeq, node.anchorSeq)
+  }
+  const presentations = new Map<number, TurnProcessPresentation>()
+  for (const [turn, record] of accumulating) {
+    presentations.set(turn, {
+      ...(record.control === undefined ? {} : { control: record.control }),
+      ...(record.openingHumanAnchor === undefined
+        ? {} : { openingHumanAnchor: record.openingHumanAnchor }),
+      ...(record.earliestProcessAnchor === undefined
+        ? {} : { earliestProcessAnchor: record.earliestProcessAnchor }),
     })
   }
   return presentations
@@ -272,6 +291,10 @@ function presentationPosition(
  * Order visible Chat Nodes without changing existing relative order as process
  * eligibility changes. Opening human input precedes process candidates, while
  * each synthetic process control sits between them.
+ *
+ * Sort keys are computed once per call: the comparator runs O(n log n) times
+ * per structural change over the whole loaded window, and re-deriving a
+ * position inside it multiplied that cost by two presentations lookups.
  * @param nodes - currently materialized Chat Nodes.
  * @returns visible Nodes in presentation order.
  */
@@ -280,14 +303,19 @@ export function orderedVisibleChatNodes(
 ): ChatConversationViewNode[] {
   const visible = nodes.filter(node => node.visibility === 'visible')
   const presentations = turnProcessPresentations(visible)
-  return visible.sort((left, right) => {
-    const leftPosition = presentationPosition(left, presentations)
-    const rightPosition = presentationPosition(right, presentations)
+  const positioned = visible.map((node) => {
+    const position = presentationPosition(node, presentations)
+    return { node, position }
+  })
+  positioned.sort((left, right) => {
+    const leftPosition = left.position
+    const rightPosition = right.position
     return leftPosition.anchor - rightPosition.anchor
       || leftPosition.rank - rightPosition.rank
       || leftPosition.originalAnchor - rightPosition.originalAnchor
-      || left.key.localeCompare(right.key)
+      || left.node.key.localeCompare(right.node.key)
   })
+  return positioned.map(entry => entry.node)
 }
 
 function referenceMessageSeq(node: ChatConversationViewNode): number | undefined {

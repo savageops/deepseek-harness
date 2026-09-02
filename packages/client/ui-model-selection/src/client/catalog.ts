@@ -21,6 +21,8 @@ export class ModelCatalogDirectory {
 
   private generation = 0
   private inflight: Promise<ModelCatalog> | undefined
+  /** A Host input change observed during one read gets one trailing read. */
+  private refreshQueued = false
 
   /** @param session - Session Remote namespace carrying the Host-generation catalog. */
   constructor(private readonly session: Pick<ClientRemote['session'], 'modelCatalog'>) {}
@@ -55,7 +57,12 @@ export class ModelCatalogDirectory {
       }
       throw error
     }).finally(() => {
-      if (generation === this.generation && this.inflight === operation) this.inflight = undefined
+      if (this.inflight !== operation) return
+      this.inflight = undefined
+      if (!this.refreshQueued || generation !== this.generation) return
+      this.refreshQueued = false
+      this.invalidate()
+      void this.load().catch(() => { /* the selector exposes the shared error */ })
     })
     this.inflight = operation
     return operation
@@ -74,12 +81,19 @@ export class ModelCatalogDirectory {
 
   /** Invalidate and reload the catalog after a Host-side model input changes. */
   refresh(): void {
+    if (this.inflight !== undefined) {
+      // Keep the current request useful and retain the last good value. The
+      // settlement starts exactly one fresh generation for the whole burst.
+      this.refreshQueued = true
+      return
+    }
     this.invalidate()
     void this.load().catch(() => { /* the selector exposes the shared error */ })
   }
 
   /** Clear Host-specific values and load the replacement Host generation. */
   resetGeneration(): void {
+    this.refreshQueued = false
     this.invalidate(true)
     void this.load().catch(() => { /* the selector exposes the shared error */ })
   }

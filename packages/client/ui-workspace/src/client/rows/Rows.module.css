@@ -103,6 +103,12 @@
 .sessionRow {
   height: 32px;
   gap: 0;
+  /* Expanded and search result trees can contain thousands of rows. Keep the
+     row identity and hit targets in the DOM, but let the browser skip work
+     for rows outside the sidebar viewport. The fixed intrinsic size preserves
+     the tree's scrollbar geometry and drag hit-test spacing. */
+  content-visibility: auto;
+  contain-intrinsic-size: 32px;
   /* Mount fade: session rows appear by unfolding a group (or the tree
      mounting). Stable row keys keep already-visible rows from replaying it. */
   animation: row-in 150ms var(--ds-ease-in-out);

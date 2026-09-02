@@ -3,6 +3,7 @@
 import { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { errorChain } from '@deepseek-ai/dsh-llm'
+import type {} from '@deepseek-ai/dsh-credentials'
 import { canOpenNativePath, openNativePath } from '@deepseek-ai/dsh-native-command'
 import type { SessionEvent, SessionHeader, SessionId } from '@deepseek-ai/dsh-session'
 import type { SessionObservation } from '@deepseek-ai/dsh-session-query'
@@ -17,7 +18,11 @@ import { SessionControlController } from './control.ts'
 import { SessionHistoryController } from './history.ts'
 import { SessionFileReferences } from './file-references.ts'
 import { ApiSessionList, DEFAULT_COLD_BLANK_PROBE_MAX_BYTES } from './list.ts'
-import { buildModelCatalog } from './catalog.ts'
+import {
+  buildModelCatalog,
+  DEFAULT_MODEL_CATALOG_PROVIDER_TIMEOUT_MS,
+  ModelCatalogCache,
+} from './catalog.ts'
 import { installModelSelectionProjection } from './model-selection-projection.ts'
 import { SessionSkillCatalog } from './skill-catalog.ts'
 import type {
@@ -67,6 +72,8 @@ declare module '@deepseek-ai/cordis' {
 export interface Config {
   /** Maximum cold Session artifact size eligible for one full projection observation. */
   readonly coldBlankProbeMaxBytes?: number
+  /** Deadline for one provider's advisory model-catalog read; zero disables it. */
+  readonly modelCatalogProviderTimeoutMs?: number
   /** Override platform desktop-opener detection. */
   readonly nativeOpen?: boolean
 }
@@ -95,6 +102,7 @@ export class SessionController extends TypertRemoteService {
 
   static Config: z<Config> = z.object({
     coldBlankProbeMaxBytes: z.natural().default(DEFAULT_COLD_BLANK_PROBE_MAX_BYTES),
+    modelCatalogProviderTimeoutMs: z.natural().default(DEFAULT_MODEL_CATALOG_PROVIDER_TIMEOUT_MS),
     nativeOpen: z.boolean(),
   })
 
@@ -103,6 +111,7 @@ export class SessionController extends TypertRemoteService {
   private readonly controlState: SessionControlController
   private readonly history: SessionHistoryController
   private readonly listState: ApiSessionList
+  private readonly modelCatalogState: ModelCatalogCache
   private readonly openPath: (path: string, signal: AbortSignal) => Promise<void>
   private readonly canOpenPath: () => boolean
   private readonly promotions = new Set<Promise<void>>()
@@ -127,6 +136,10 @@ export class SessionController extends TypertRemoteService {
       ctx,
       config.coldBlankProbeMaxBytes ?? DEFAULT_COLD_BLANK_PROBE_MAX_BYTES,
     )
+    this.modelCatalogState = new ModelCatalogCache(
+      ctx,
+      config.modelCatalogProviderTimeoutMs ?? DEFAULT_MODEL_CATALOG_PROVIDER_TIMEOUT_MS,
+    )
     this.openPath = internals.openPath ?? openNativePath
     this.canOpenPath = internals.canOpenPath
       ?? (() => config.nativeOpen ?? (internals.openPath !== undefined || canOpenNativePath()))
@@ -145,6 +158,9 @@ export class SessionController extends TypertRemoteService {
     ctx.on('agent/error', ({ agent, error }) => {
       ctx.emit('api-session/error', agent.id, errorChain(error))
     })
+    ctx.on('llm/adapters-updated', () => { this.modelCatalogState.invalidate() })
+    ctx.on('settings/document-updated', () => { this.modelCatalogState.invalidate() })
+    ctx.on('credentials/reference-updated', () => { this.modelCatalogState.invalidate() })
     ctx.on('session/event', (session, event) => {
       if (event.type === 'request/header') {
         const agent = ctx.agents.get(session.id)
@@ -247,7 +263,7 @@ export class SessionController extends TypertRemoteService {
    */
   @Remote('modelCatalog')
   modelCatalog(): Promise<ModelCatalog> {
-    return buildModelCatalog(this.ctx)
+    return this.modelCatalogState.load()
   }
 
   /**

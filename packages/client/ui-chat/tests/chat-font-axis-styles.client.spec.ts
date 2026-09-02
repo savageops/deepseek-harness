@@ -19,6 +19,21 @@ function declarationsFrom(source: string, selector: string): string[] {
 }
 
 describe('chat flow font-size axis', () => {
+  it('contains offscreen chat rows without removing semantic DOM anchors', () => {
+    const css = read('ChatView.module.css')
+    expect(declarationsFrom(css, '.flowItem')).toEqual(expect.arrayContaining([
+      'content-visibility: auto',
+      'contain-intrinsic-size: auto 160px',
+    ]))
+    expect(declarationsFrom(css, '.virtualRow')).toEqual(expect.arrayContaining([
+      'position: absolute',
+      'display: flow-root',
+    ]))
+    expect(declarationsFrom(css, '.virtualRow[data-chat-virtual-tail] > .flowItem')).toContain(
+      'content-visibility: visible',
+    )
+  })
+
   it('think text reads the secondary tier (one step under the body size)', () => {
     const css = read('ReasoningRow.module.css')
     for (const selector of ['.summary', '.thinkBody']) {
