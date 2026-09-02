@@ -18,7 +18,7 @@ describe('ModelDirectory', () => {
   it('uses the Host default as soon as the catalog is ready, then marks the Session selection synced', async () => {
     const response = Promise.withResolvers<unknown>()
     const catalog = new ModelCatalogDirectory({
-      modelCatalog: vi.fn(() => response.promise),
+      remote: { session: { modelCatalog: vi.fn(() => response.promise) } },
     } as never)
     const projection = createSnapshotStore<unknown>(undefined)
     const subject = new ModelDirectory(
@@ -58,7 +58,9 @@ describe('ModelDirectory', () => {
 
   it('keeps a durable Session selection visible while the catalog is still loading', async () => {
     const response = Promise.withResolvers<unknown>()
-    const catalog = new ModelCatalogDirectory({ modelCatalog: () => response.promise } as never)
+    const catalog = new ModelCatalogDirectory({
+      remote: { session: { modelCatalog: () => response.promise } },
+    } as never)
     const projection = createSnapshotStore<unknown>({
       lastUsed: null,
       next: { provider: 'fixture', model: 'session-model' },

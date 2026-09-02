@@ -80,7 +80,7 @@ export const subagentModelSelectionProjectionDefinition = {
  * @returns the registered provider name, or undefined for the fixed-provider definition.
  */
 export function subagentRuntimeProviderSelection(session: Session): string | undefined {
-  const event = session.events.find(candidate => candidate.type === 'subagent/runtime-provider-selection')
+  const event = session.snapshotEvents().find(candidate => candidate.type === 'subagent/runtime-provider-selection')
   if (event?.type !== 'subagent/runtime-provider-selection') return undefined
   if (typeof event.data.provider !== 'string' || event.data.provider.length === 0) {
     throw new Error('subagent/runtime-provider-selection requires a non-empty provider name')
@@ -136,7 +136,7 @@ export function recordSubagentModelSelection(
  * @returns a detached route, or undefined when calls inherit their parent.
  */
 export function subagentModelSelectionDefault(session: Session): SubagentModelSelection | undefined {
-  const event = session.events.find(candidate => candidate.type === 'subagent/model-selection-default')
+  const event = session.snapshotEvents().find(candidate => candidate.type === 'subagent/model-selection-default')
   if (event?.type !== 'subagent/model-selection-default') return undefined
   assertSubagentModelSelection(event.data.selection)
   return {
