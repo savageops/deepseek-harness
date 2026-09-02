@@ -25,7 +25,10 @@ export class ModelCatalogCache {
     private readonly providerTimeoutMs = DEFAULT_MODEL_CATALOG_PROVIDER_TIMEOUT_MS,
   ) {}
 
-  /** Return the current generation's cached catalog or share its one read. */
+  /**
+   * Return the current generation's cached catalog or share its one read.
+   * @returns the loaded global model catalog.
+   */
   load(): Promise<ModelCatalog> {
     const current = this.current
     if (current?.generation === this.generation) return Promise.resolve(current.value)
@@ -76,6 +79,7 @@ async function withProviderDeadline<T>(
  * Build the browser model catalog without requiring a Session.
  * @param ctx - Host context carrying the live LLM registry.
  * @param defaultSelection - deployment default used before a Session selects a model.
+ * @param providerTimeoutMs - deadline for each provider's advisory read; zero disables it.
  * @returns successful non-empty provider groups and isolated provider failures.
  */
 export async function buildModelCatalog(

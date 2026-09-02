@@ -766,7 +766,7 @@ Source: [`packages/subagent/subagent/src/descriptor.ts:38`](../packages/subagent
 }
 ```
 
-Source: [`packages/subagent/tool-subagent/src/model-selection-state.ts:38`](../packages/subagent/tool-subagent/src/model-selection-state.ts)
+Source: [`packages/subagent/tool-subagent/src/model-selection-state.ts:41`](../packages/subagent/tool-subagent/src/model-selection-state.ts)
 
 <a id="subagentmodel-selection-policy--log-only"></a>
 
@@ -785,7 +785,7 @@ Source: [`packages/subagent/tool-subagent/src/model-selection-state.ts:38`](../p
 }
 ```
 
-Source: [`packages/subagent/tool-subagent/src/model-selection-state.ts:17`](../packages/subagent/tool-subagent/src/model-selection-state.ts)
+Source: [`packages/subagent/tool-subagent/src/model-selection-state.ts:31`](../packages/subagent/tool-subagent/src/model-selection-state.ts)
 
 <a id="subagentruntime-provider-selection--log-only"></a>
 
@@ -803,7 +803,7 @@ Source: [`packages/subagent/tool-subagent/src/model-selection-state.ts:17`](../p
 }
 ```
 
-Source: [`packages/subagent/tool-subagent/src/model-selection-state.ts:18`](../packages/subagent/tool-subagent/src/model-selection-state.ts)
+Source: [`packages/subagent/tool-subagent/src/model-selection-state.ts:21`](../packages/subagent/tool-subagent/src/model-selection-state.ts)
 
 ### `team/*`
 
