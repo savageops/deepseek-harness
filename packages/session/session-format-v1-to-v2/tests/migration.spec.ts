@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { sessionFormatV1ToV2 } from '@deepseek-ai/dsh-session-format-v1-to-v2'
+import { createSessionFormatV1ToV2 } from '@deepseek-ai/dsh-session-format-v1-to-v2'
 import type { SessionFormatArtifact, SessionFormatEvent } from '@deepseek-ai/dsh-session-format'
+
+const sessionFormatV1ToV2 = createSessionFormatV1ToV2()
 
 const message = {
   id: 'assistant-1',
@@ -20,7 +22,7 @@ function event(type: string, seq: number, time: number, data: SessionFormatEvent
   return { type, seq, time, data }
 }
 
-describe('sessionFormatV1ToV2', () => {
+describe('createSessionFormatV1ToV2', () => {
   it('migrates one exact released-v1 header without reading events', () => {
     const header = {
       version: 1,

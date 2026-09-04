@@ -65,30 +65,37 @@ export function assertReleasedV1Header(header: SessionFormatHeader): void {
 /**
  * Validate v0 before historical normalizers run.
  * @param artifact - decoded released-v0 source.
+ * @param installedEventTypes - event types the installed build owns beyond the released inventory;
+ * admitted as opaque pass-through records without payload semantics.
  */
-export function assertReleasedV0SourceArtifact(artifact: SessionFormatArtifact): void {
+export function assertReleasedV0SourceArtifact(artifact: SessionFormatArtifact, installedEventTypes?: ReadonlySet<string>): void {
   assertReleasedSessionFormatHeader(artifact.header, 0)
-  assertArtifactCoordinates(artifact, true, RELEASED_V0_EVENT_TYPE_SET)
+  assertArtifactCoordinates(artifact, true, RELEASED_V0_EVENT_TYPE_SET, false, installedEventTypes)
 }
 
 /**
  * Validate normalized v0 events before the identity header version changes.
  * @param artifact - normalized released-v0 artifact.
+ * @param installedEventTypes - installed-build event types admitted as opaque pass-through records.
  */
-export function assertNormalizedReleasedV0Artifact(artifact: SessionFormatArtifact): void {
+export function assertNormalizedReleasedV0Artifact(artifact: SessionFormatArtifact, installedEventTypes?: ReadonlySet<string>): void {
   assertReleasedSessionFormatHeader(artifact.header, 0)
-  assertArtifactCoordinates(artifact, false, RELEASED_V0_EVENT_TYPE_SET)
-  for (const event of artifact.events) assertReleasedEventPayload(event, 0)
+  assertArtifactCoordinates(artifact, false, RELEASED_V0_EVENT_TYPE_SET, false, installedEventTypes)
+  for (const event of artifact.events) {
+    if (RELEASED_V0_EVENT_DISPOSITIONS[event.type] === undefined && installedEventTypes?.has(event.type) === true) continue
+    assertReleasedEventPayload(event, 0)
+  }
   assertReleasedArtifactRelationships(artifact)
 }
 
 /**
  * Validate the exact logical image emitted by the released v1 writer.
  * @param artifact - decoded or migration-produced v1 artifact.
+ * @param installedEventTypes - installed-build event types admitted as opaque pass-through records.
  */
-export function assertReleasedV1Artifact(artifact: SessionFormatArtifact): void {
+export function assertReleasedV1Artifact(artifact: SessionFormatArtifact, installedEventTypes?: ReadonlySet<string>): void {
   assertReleasedV1Header(artifact.header)
-  assertArtifactCoordinates(artifact, false, RELEASED_V0_EVENT_TYPE_SET)
+  assertArtifactCoordinates(artifact, false, RELEASED_V0_EVENT_TYPE_SET, false, installedEventTypes)
   for (const event of artifact.events) {
     if (RELEASED_V0_EVENT_DISPOSITIONS[event.type] !== undefined) assertReleasedEventPayload(event, 1)
   }
@@ -124,6 +131,7 @@ function assertArtifactCoordinates(
   allowLegacySteering: boolean,
   knownEventTypes?: ReadonlySet<string>,
   vocabularyNeutral = false,
+  installedEventTypes?: ReadonlySet<string>,
 ): void {
   const inheritedEventCount = sessionFormatCount(artifact.inheritedEventCount, 'Session inheritedEventCount')
   if (inheritedEventCount > artifact.events.length) {
@@ -140,8 +148,9 @@ function assertArtifactCoordinates(
     const disposition = RELEASED_V0_EVENT_DISPOSITIONS[type]
     const legacy = allowLegacySteering && LEGACY_SOURCE_TYPES.has(type)
     const currentKnown = knownEventTypes?.has(type) === true
+    const installedExtension = !currentKnown && installedEventTypes?.has(type) === true
     const ignorableCurrent = !allowLegacySteering && !currentKnown && record['ignorable'] === true
-    if (!currentKnown && !legacy && !ignorableCurrent && !vocabularyNeutral) {
+    if (!currentKnown && !legacy && !ignorableCurrent && !installedExtension && !vocabularyNeutral) {
       if (allowLegacySteering) {
         throw new SessionFormatUnsupportedMigrationError(
           `format v0 contains unknown historical event type ${JSON.stringify(type)} at seq ${index}; migration refuses unknown historical events even when ignorable`,

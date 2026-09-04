@@ -63,11 +63,13 @@ export function assertReleasedV2Header(header: SessionFormatHeader): void {
 /**
  * Validate the exact logical image emitted by the released v2 writer.
  * @param artifact - complete decoded released-v2 Session artifact.
+ * @param installedEventTypes - event types the installed build owns beyond the released inventory;
+ * admitted as opaque pass-through records without payload semantics.
  * @throws {SessionFormatError} when an envelope, payload, relationship, or inherited cut is invalid.
  * @throws {SessionFormatUnsupportedMigrationError} when the artifact contains an unknown event type.
  */
-export function assertReleasedV2Artifact(artifact: SessionFormatArtifact): void {
-  validateReleasedV2Artifact(artifact, 'target', RELEASED_V2_EVENT_TYPE_SET)
+export function assertReleasedV2Artifact(artifact: SessionFormatArtifact, installedEventTypes?: ReadonlySet<string>): void {
+  validateReleasedV2Artifact(artifact, 'target', RELEASED_V2_EVENT_TYPE_SET, installedEventTypes)
 }
 
 /**
@@ -83,6 +85,7 @@ function validateReleasedV2Artifact(
   artifact: SessionFormatArtifact,
   mode: 'target' | 'current' | 'physical',
   knownEventTypes?: ReadonlySet<string>,
+  installedEventTypes?: ReadonlySet<string>,
 ): void {
   assertReleasedV2Header(artifact.header)
   const cut = sessionFormatCount(artifact.inheritedEventCount, 'format v2 inherited event count')
@@ -94,7 +97,7 @@ function validateReleasedV2Artifact(
     const type = record['type']
     if (typeof type !== 'string') throw new SessionFormatError(`format v2 event ${index} type must be a string`)
     const disposition = RELEASED_V2_EVENT_DISPOSITIONS[type]
-    const installed = knownEventTypes?.has(type) === true
+    const installed = knownEventTypes?.has(type) === true || installedEventTypes?.has(type) === true
     const ignorableUnknown = disposition === undefined
       && mode === 'current'
       && record['ignorable'] === true

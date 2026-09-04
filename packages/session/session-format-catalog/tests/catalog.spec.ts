@@ -56,4 +56,40 @@ describe('first-party Session format catalog', () => {
       type: 'ordinary/external', seq: 0, time: 1, data: null, ignorable: true,
     }])
   })
+
+  it('migrates a released-v0 log carrying plugin-registered event types through the full chain', () => {
+    const header = {
+      type: 'session',
+      version: 0,
+      id: 'registered-extension',
+      createdAt: 1,
+      seedLength: 0,
+      delegationDepth: 0,
+    }
+    const registered = sessionFormatCatalog.decodeArtifact(header, [
+      { type: 'turn/start', seq: 0, time: 2, data: { turn: 1 } },
+      {
+        type: 'subagent/runtime-provider-selection',
+        seq: 1,
+        time: 3,
+        data: { provider: 'subagent-acp' },
+      },
+    ])
+    const migrated = sessionFormatCatalog.migrate(registered)
+    expect(migrated.header).toMatchObject({ version: 2, id: 'registered-extension' })
+    expect(migrated.events).toEqual([{
+      type: 'session/end-seed', seq: 0, time: 2, data: { inherited: true },
+    }, {
+      type: 'turn/start', seq: 1, time: 2, data: { turn: 1 },
+    }, {
+      type: 'subagent/runtime-provider-selection',
+      seq: 2,
+      time: 3,
+      data: { provider: 'subagent-acp' },
+    }])
+
+    expect(() => sessionFormatCatalog.decodeArtifact(header, [{
+      type: 'ordinary/not-installed-anywhere', seq: 0, time: 2, data: null,
+    }])).toThrow(/migration refuses unknown historical events even when ignorable/)
+  })
 })

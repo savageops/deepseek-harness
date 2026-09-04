@@ -31,7 +31,7 @@
       "from": 1,
       "to": 2,
       "export": ".",
-      "migration": "sessionFormatV1ToV2",
+      "migration": "createSessionFormatV1ToV2",
       "sourceCodec": "releasedV1SessionFormatCodec",
       "targetCodec": "releasedV2SessionFormatCodec",
       "targetHeaderValidator": "assertReleasedV2Header",

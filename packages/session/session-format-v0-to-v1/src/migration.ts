@@ -10,6 +10,7 @@ import type {
   SessionFormatHeader,
   SessionFormatJsonObject,
   SessionFormatJsonValue,
+  SessionFormatMigration,
 } from '@deepseek-ai/dsh-session-format'
 import {
   assertReleasedEventPayload,
@@ -18,32 +19,41 @@ import {
   assertReleasedV1Artifact,
   assertReleasedV1Header,
 } from './validation.ts'
+import { RELEASED_V0_EVENT_DISPOSITIONS } from './dispositions.ts'
 import { assertReleasedV0Keys, releasedV0Record } from './validation-helpers.ts'
 
-/** Identity format edge that promotes released v0 into released v1. */
-export const sessionFormatV0ToV1 = defineSessionFormatMigration({
-  name: '@deepseek-ai/dsh-session-format-v0-to-v1',
-  fromVersion: 0,
-  toVersion: 1,
-  migrateHeader(header) {
-    assertHeaderVersion(header, 0)
-    return { ...header, version: 1 }
-  },
-  migrate(source) {
-    assertReleasedV0SourceArtifact(source)
-    const events = normalizeReleasedV0Events(source.events, source.header.id)
-    assertNormalizedReleasedV0Artifact({ ...source, events })
-    const target = snapshotSessionFormatArtifact({
-      header: { ...source.header, version: 1 },
-      inheritedEventCount: source.inheritedEventCount,
-      events,
-    }, 'released v0-to-v1 target')
-    assertReleasedV1Artifact(target)
-    return target
-  },
-  validateTarget: assertReleasedV1Artifact,
-  validateTargetHeader: assertReleasedV1Header,
-})
+/**
+ * Build the identity format edge that promotes released v0 into released v1.
+ * @param installedEventTypes - event types the installed build owns beyond the released inventory,
+ * e.g. plugin-registered external events; such records migrate as opaque pass-through entries with
+ * validated envelopes and untouched payloads. Types outside both sets still refuse.
+ * @returns immutable validated migration declaration.
+ */
+export function createSessionFormatV0ToV1(installedEventTypes?: ReadonlySet<string>): SessionFormatMigration {
+  return defineSessionFormatMigration({
+    name: '@deepseek-ai/dsh-session-format-v0-to-v1',
+    fromVersion: 0,
+    toVersion: 1,
+    migrateHeader(header) {
+      assertHeaderVersion(header, 0)
+      return { ...header, version: 1 }
+    },
+    migrate(source) {
+      assertReleasedV0SourceArtifact(source, installedEventTypes)
+      const events = normalizeReleasedV0Events(source.events, source.header.id, installedEventTypes)
+      assertNormalizedReleasedV0Artifact({ ...source, events }, installedEventTypes)
+      const target = snapshotSessionFormatArtifact({
+        header: { ...source.header, version: 1 },
+        inheritedEventCount: source.inheritedEventCount,
+        events,
+      }, 'released v0-to-v1 target')
+      assertReleasedV1Artifact(target, installedEventTypes)
+      return target
+    },
+    validateTarget: artifact => assertReleasedV1Artifact(artifact, installedEventTypes),
+    validateTargetHeader: assertReleasedV1Header,
+  })
+}
 
 function assertHeaderVersion(header: SessionFormatHeader, version: 0 | 1): void {
   if (header.version !== version) throw new SessionFormatError(`expected format v${version} header`)
@@ -52,6 +62,7 @@ function assertHeaderVersion(header: SessionFormatHeader, version: 0 | 1): void 
 function normalizeReleasedV0Events(
   events: readonly SessionFormatEvent[],
   sessionId: string,
+  installedEventTypes?: ReadonlySet<string>,
 ): readonly SessionFormatEvent[] {
   const messageIds = new Map<number, string>()
   const output: SessionFormatEvent[] = []
@@ -62,7 +73,9 @@ function normalizeReleasedV0Events(
     const header = normalizeLegacyRequestHeader(end, sessionId)
     const steering = normalizeLegacySteering(header, sessionId)
     const message = normalizeLegacyMessage(steering, sessionId, messageIds)
-    assertReleasedEventPayload(message, 0)
+    if (!(RELEASED_V0_EVENT_DISPOSITIONS[message.type] === undefined && installedEventTypes?.has(message.type) === true)) {
+      assertReleasedEventPayload(message, 0)
+    }
     output.push(message)
     const messageId = eventMessageId(message)
     if (messageId !== undefined) messageIds.set(message.seq, messageId)

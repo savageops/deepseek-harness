@@ -7,9 +7,11 @@ import {
   assertReleasedV1Artifact,
   releasedV0SessionFormatCodec,
   releasedV1SessionFormatCodec,
-  sessionFormatV0ToV1,
+  createSessionFormatV0ToV1,
 } from '../src/index.ts'
 import { assertReleasedEventPayload } from '../src/validation.ts'
+
+const sessionFormatV0ToV1 = createSessionFormatV0ToV1()
 
 const v0Header = {
   type: 'session', version: 0, id: 'validation', createdAt: 1, delegationDepth: 0,

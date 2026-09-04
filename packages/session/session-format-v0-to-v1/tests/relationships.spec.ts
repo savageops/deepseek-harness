@@ -4,8 +4,10 @@ import {
   releasedV0SessionFormatCodec,
   releasedV1SessionFormatCodec,
   assertReleasedV1Artifact,
-  sessionFormatV0ToV1,
+  createSessionFormatV0ToV1,
 } from '../src/index.ts'
+
+const sessionFormatV0ToV1 = createSessionFormatV0ToV1()
 
 const header = {
   type: 'session', version: 1, id: 'relationships', createdAt: 1, delegationDepth: 0,

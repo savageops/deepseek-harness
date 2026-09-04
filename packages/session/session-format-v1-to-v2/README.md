@@ -42,7 +42,7 @@ A successful v1 `assistant/message` must cite its complete ordered attempt. The 
 
 The migration refuses a reference to a consumed chunk instead of redirecting it to a different semantic event. It remaps declared event provenance, surface replacements, command source events, compaction ranges and lists, and title message lists. The already model-visible `session/title-llm-request.messages` text remains byte-identical after source validation, so target validation does not reinterpret the old sequence numbers embedded in that prompt. A seeded source also refuses an inherited cut that splits an Assistant attempt; the target marks the exact cut with `session/end-seed { inherited: true }`.
 
-The v2 physical header requires `isSeeded` and does not store a numeric cut. The codec derives the cut from the last inherited end-seed marker, writes one event per row, range-encodes only `sourceEventSeqs`, and remains neutral to ordinary event vocabulary and payload growth. Strict migration-target validation freezes the released-v2 inventory and rejects unknown types or members. Current restoration instead admits event types known to the installed Session package plus unknown events carrying `ignorable: true`, then delegates payload and stream semantics to the installed current restorer. All paths retain strict header, event-envelope, sequence, and inherited-cut validation.
+The v2 physical header requires `isSeeded` and does not store a numeric cut. The codec derives the cut from the last inherited end-seed marker, writes one event per row, range-encodes only `sourceEventSeqs`, and remains neutral to ordinary event vocabulary and payload growth. Strict migration-target validation freezes the released-v2 inventory and rejects unknown types or members; types the installed build declares beyond that inventory migrate as opaque records. Current restoration instead admits event types known to the installed Session package plus unknown events carrying `ignorable: true`, then delegates payload and stream semantics to the installed current restorer. All paths retain strict header, event-envelope, sequence, and inherited-cut validation.
 
 -----
 
@@ -96,7 +96,7 @@ The restored model-message sequence stays unchanged, so the migration alone does
 
 <a id="known-limitations-and-deferred-work"></a>
 
-- **Closed first-party source inventory** — an unknown v1 event refuses migration, including an event marked `ignorable: true`.
+- **Closed first-party source inventory** — an unknown v1 event refuses migration, including an event marked `ignorable: true`, unless the installed build declares the type; declared extensions migrate as opaque records.
 - **Whole-artifact transformation** — the edge materializes the source, target, and sequence map in memory; it does not stream the rewrite.
 - **No publication or compatibility fallback** — persistence owns exclusive successor publication, and retained v1 generations are not automatic downgrade or restore inputs.
 

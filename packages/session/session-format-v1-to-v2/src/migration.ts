@@ -9,6 +9,7 @@ import type {
   SessionFormatEvent,
   SessionFormatJsonObject,
   SessionFormatJsonValue,
+  SessionFormatMigration,
 } from '@deepseek-ai/dsh-session-format'
 import {
   RELEASED_V0_EVENT_DISPOSITIONS,
@@ -30,85 +31,95 @@ interface StagedEvent {
   readonly event: SessionFormatEvent
 }
 
-/** Adjacent migration that embeds released-v1 top-level Assistant chunks into v2 attempt events. */
-export const sessionFormatV1ToV2 = defineSessionFormatMigration({
-  name: '@deepseek-ai/dsh-session-format-v1-to-v2',
-  fromVersion: 1,
-  toVersion: 2,
-  migrateHeader(header) {
-    assertReleasedV1Header(header)
-    return { ...header, version: 2 }
-  },
-  migrate(source) {
-    assertReleasedV1Artifact(source)
-    const unknown = source.events.find(event => RELEASED_V0_EVENT_DISPOSITIONS[event.type] === undefined)
-    if (unknown !== undefined) {
-      throw refusal(`format v1 contains unknown event type ${JSON.stringify(unknown.type)} at seq ${unknown.seq}`)
-    }
-    const groups = collectAttemptGroups(source.events)
-    const groupByChunk = new Map<number, AttemptGroup>()
-    const groupByMessage = new Map<number, AttemptGroup>()
-    for (const group of groups) {
-      for (const chunk of group.chunks) groupByChunk.set(chunk.seq, group)
-      if (group.messageSeq !== undefined) groupByMessage.set(group.messageSeq, group)
-    }
+/**
+ * Build the adjacent migration that embeds released-v1 top-level Assistant chunks into v2 attempt events.
+ * @param installedEventTypes - event types the installed build owns beyond the released inventory,
+ * e.g. plugin-registered external events; such records migrate as opaque pass-through entries with
+ * validated envelopes and untouched payloads. Types outside both sets still refuse.
+ * @returns immutable validated migration declaration.
+ */
+export function createSessionFormatV1ToV2(installedEventTypes?: ReadonlySet<string>): SessionFormatMigration {
+  return defineSessionFormatMigration({
+    name: '@deepseek-ai/dsh-session-format-v1-to-v2',
+    fromVersion: 1,
+    toVersion: 2,
+    migrateHeader(header) {
+      assertReleasedV1Header(header)
+      return { ...header, version: 2 }
+    },
+    migrate(source) {
+      assertReleasedV1Artifact(source, installedEventTypes)
+      const unknown = source.events.find(event =>
+        RELEASED_V0_EVENT_DISPOSITIONS[event.type] === undefined
+        && installedEventTypes?.has(event.type) !== true)
+      if (unknown !== undefined) {
+        throw refusal(`format v1 contains unknown event type ${JSON.stringify(unknown.type)} at seq ${unknown.seq}`)
+      }
+      const groups = collectAttemptGroups(source.events)
+      const groupByChunk = new Map<number, AttemptGroup>()
+      const groupByMessage = new Map<number, AttemptGroup>()
+      for (const group of groups) {
+        for (const chunk of group.chunks) groupByChunk.set(chunk.seq, group)
+        if (group.messageSeq !== undefined) groupByMessage.set(group.messageSeq, group)
+      }
 
-    const staged: StagedEvent[] = []
-    const oldToNew = new Map<number, number>()
-    for (const sourceEvent of source.events) {
-      const group = groupByChunk.get(sourceEvent.seq)
-      if (group !== undefined) {
-        if (group.messageSeq === undefined && sourceEvent.seq === group.chunks.at(-1)?.seq) {
-          stage(staged, oldToNew, sourceEvent.seq, attemptEvent(group))
+      const staged: StagedEvent[] = []
+      const oldToNew = new Map<number, number>()
+      for (const sourceEvent of source.events) {
+        const group = groupByChunk.get(sourceEvent.seq)
+        if (group !== undefined) {
+          if (group.messageSeq === undefined && sourceEvent.seq === group.chunks.at(-1)?.seq) {
+            stage(staged, oldToNew, sourceEvent.seq, attemptEvent(group))
+          }
+          continue
         }
-        continue
+        const messageGroup = groupByMessage.get(sourceEvent.seq)
+        if (messageGroup !== undefined) {
+          stage(staged, oldToNew, sourceEvent.seq, messageEvent(sourceEvent, messageGroup))
+          continue
+        }
+        const event = source.header.isSeeded
+          && sourceEvent.seq === source.inheritedEventCount
+          && sourceEvent.type === 'session/end-seed'
+          ? { ...sourceEvent, data: { inherited: true } }
+          : sourceEvent
+        stage(staged, oldToNew, sourceEvent.seq, event)
       }
-      const messageGroup = groupByMessage.get(sourceEvent.seq)
-      if (messageGroup !== undefined) {
-        stage(staged, oldToNew, sourceEvent.seq, messageEvent(sourceEvent, messageGroup))
-        continue
-      }
-      const event = source.header.isSeeded
-        && sourceEvent.seq === source.inheritedEventCount
-        && sourceEvent.type === 'session/end-seed'
-        ? { ...sourceEvent, data: { inherited: true } }
-        : sourceEvent
-      stage(staged, oldToNew, sourceEvent.seq, event)
-    }
 
-    const inheritedEventCount = remapInheritedCut(source, groups, staged)
-    if (source.header.isSeeded && source.events[source.inheritedEventCount]?.type !== 'session/end-seed') {
-      const next = source.events[source.inheritedEventCount]
-      const previous = source.events[source.inheritedEventCount - 1]
-      staged.splice(inheritedEventCount, 0, {
-        origin: -1,
-        event: {
-          type: 'session/end-seed',
-          seq: inheritedEventCount,
-          time: next?.time ?? previous?.time ?? source.header.createdAt,
-          data: { inherited: true },
-        },
-      })
-      oldToNew.clear()
-      for (const [seq, candidate] of staged.entries()) {
-        if (candidate.origin >= 0) oldToNew.set(candidate.origin, seq)
+      const inheritedEventCount = remapInheritedCut(source, groups, staged)
+      if (source.header.isSeeded && source.events[source.inheritedEventCount]?.type !== 'session/end-seed') {
+        const next = source.events[source.inheritedEventCount]
+        const previous = source.events[source.inheritedEventCount - 1]
+        staged.splice(inheritedEventCount, 0, {
+          origin: -1,
+          event: {
+            type: 'session/end-seed',
+            seq: inheritedEventCount,
+            time: next?.time ?? previous?.time ?? source.header.createdAt,
+            data: { inherited: true },
+          },
+        })
+        oldToNew.clear()
+        for (const [seq, candidate] of staged.entries()) {
+          if (candidate.origin >= 0) oldToNew.set(candidate.origin, seq)
+        }
       }
-    }
-    for (const group of groups) {
-      for (const chunk of group.chunks) oldToNew.delete(chunk.seq)
-    }
+      for (const group of groups) {
+        for (const chunk of group.chunks) oldToNew.delete(chunk.seq)
+      }
 
-    const target = snapshotSessionFormatArtifact({
-      header: { ...source.header, version: 2 },
-      inheritedEventCount,
-      events: staged.map(({ event }, seq) => remapReferences(event, seq, oldToNew)),
-    }, 'released v1-to-v2 target')
-    assertReleasedV2Artifact(target)
-    return target
-  },
-  validateTarget: assertReleasedV2Artifact,
-  validateTargetHeader: assertReleasedV2Header,
-})
+      const target = snapshotSessionFormatArtifact({
+        header: { ...source.header, version: 2 },
+        inheritedEventCount,
+        events: staged.map(({ event }, seq) => remapReferences(event, seq, oldToNew)),
+      }, 'released v1-to-v2 target')
+      assertReleasedV2Artifact(target, installedEventTypes)
+      return target
+    },
+    validateTarget: artifact => assertReleasedV2Artifact(artifact, installedEventTypes),
+    validateTargetHeader: assertReleasedV2Header,
+  })
+}
 
 function collectAttemptGroups(events: readonly SessionFormatEvent[]): readonly AttemptGroup[] {
   const groups: AttemptGroup[] = []

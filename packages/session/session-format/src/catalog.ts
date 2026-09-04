@@ -105,7 +105,7 @@ export function createSessionFormatCatalog(options: SessionFormatCatalogOptions)
   function decodeArtifact(headerValue: unknown, rowValues: readonly unknown[]) {
     const { storedVersion, codec } = artifactCodec(headerValue)
     return snapshotSessionFormatArtifact(
-      codec.decodeArtifact(headerValue, rowValues),
+      codec.decodeArtifact(headerValue, rowValues, options.installedEventTypes),
       `format v${storedVersion} decoded artifact`,
     )
   }
@@ -113,7 +113,7 @@ export function createSessionFormatCatalog(options: SessionFormatCatalogOptions)
   function decodeRecoverableArtifact(headerValue: unknown, rowValues: readonly unknown[]) {
     const { storedVersion, codec } = artifactCodec(headerValue)
     return snapshotSessionFormatArtifact(
-      codec.decodeRecoverableArtifact(headerValue, rowValues),
+      codec.decodeRecoverableArtifact(headerValue, rowValues, options.installedEventTypes),
       `format v${storedVersion} recoverable artifact`,
     )
   }

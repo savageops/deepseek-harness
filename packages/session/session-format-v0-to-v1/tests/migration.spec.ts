@@ -4,8 +4,10 @@ import {
   releasedV0SessionFormatCodec,
   releasedV1SessionFormatCodec,
   restoreReleasedV1Artifact,
-  sessionFormatV0ToV1,
+  createSessionFormatV0ToV1,
 } from '../src/index.ts'
+
+const sessionFormatV0ToV1 = createSessionFormatV0ToV1()
 
 describe('released Session format v0 to v1', () => {
   it('changes only the version of a canonical decoded artifact', () => {

@@ -33,22 +33,23 @@ export const releasedV0SessionFormatCodec = createReleasedCodec(0)
 /** Frozen physical JSON codec for the shared-layout released v1 format. */
 export const releasedV1SessionFormatCodec = createReleasedCodec(1)
 
-function createReleasedCodec(version: 0 | 1) {
+function createReleasedCodec(version: 0 | 1, installedEventTypes?: ReadonlySet<string>) {
   return Object.freeze({
     version,
     decodeHeader: (value: unknown) => decodeHeader(value, version),
-    decodeArtifact(headerValue: unknown, rowValues: readonly unknown[]) {
+    decodeArtifact(headerValue: unknown, rowValues: readonly unknown[], decodeInstalledEventTypes?: ReadonlySet<string>) {
       const physical = decodePhysicalHeader(headerValue, version)
       const artifact = snapshotSessionFormatArtifact({
         header: physical.header,
         inheritedEventCount: physical.inheritedEventCount,
         events: scanRows(rowValues, false).events,
       }, `released v${version} artifact`)
-      if (version === 0) assertReleasedV0SourceArtifact(artifact)
+      const installed = decodeInstalledEventTypes ?? installedEventTypes
+      if (version === 0) assertReleasedV0SourceArtifact(artifact, installed)
       else assertReleasedV1PhysicalArtifact(artifact)
       return artifact
     },
-    decodeRecoverableArtifact(headerValue: unknown, rowValues: readonly unknown[]) {
+    decodeRecoverableArtifact(headerValue: unknown, rowValues: readonly unknown[], decodeInstalledEventTypes?: ReadonlySet<string>) {
       const physical = decodePhysicalHeader(headerValue, version)
       const recovered = scanRows(rowValues, true)
       const artifact = snapshotSessionFormatArtifact({
@@ -56,7 +57,8 @@ function createReleasedCodec(version: 0 | 1) {
         inheritedEventCount: physical.inheritedEventCount,
         events: recovered.events,
       }, `released v${version} recoverable artifact`)
-      if (version === 0) assertReleasedV0SourceArtifact(artifact)
+      const installed = decodeInstalledEventTypes ?? installedEventTypes
+      if (version === 0) assertReleasedV0SourceArtifact(artifact, installed)
       else assertReleasedV1PhysicalArtifact(artifact)
       return artifact
     },

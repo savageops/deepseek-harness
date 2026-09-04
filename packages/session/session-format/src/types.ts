@@ -94,11 +94,12 @@ export interface SessionFormatCodec {
   /** Decode one physical header into body-independent logical metadata. */
   decodeHeader(value: unknown): SessionFormatHeader
   /** Decode one complete physical header and row sequence into logical events. */
-  decodeArtifact(headerValue: unknown, rowValues: readonly unknown[]): SessionFormatArtifact
+  decodeArtifact(headerValue: unknown, rowValues: readonly unknown[], installedEventTypes?: ReadonlySet<string>): SessionFormatArtifact
   /** Decode the row-atomic recoverable prefix used by crash-tail repair. */
   decodeRecoverableArtifact(
     headerValue: unknown,
     rowValues: readonly unknown[],
+    installedEventTypes?: ReadonlySet<string>,
   ): SessionFormatArtifact
 }
 
@@ -129,6 +130,8 @@ export interface SessionFormatCatalogOptions extends SessionFormatChainOptions {
   readonly codecs: readonly SessionFormatCodec[]
   /** Encode one already-restored current artifact through its format-specific writer. */
   readonly encodeCurrentArtifact: (artifact: SessionFormatArtifact) => EncodedSessionFormatArtifact
+  /** Event types the installed build owns beyond the released inventories, admitted opaquely on decode. */
+  readonly installedEventTypes?: ReadonlySet<string>
 }
 
 /** Build-static physical dispatch and adjacent migration catalog. */
