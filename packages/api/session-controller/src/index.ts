@@ -5,6 +5,7 @@ import z from '@deepseek-ai/schemastery'
 import { errorChain } from '@deepseek-ai/dsh-llm'
 import type {} from '@deepseek-ai/dsh-credentials'
 import type {} from '@deepseek-ai/dsh-settings'
+import type {} from '@deepseek-ai/dsh-client-file-upload'
 import { canOpenNativePath, openNativePath } from '@deepseek-ai/dsh-native-command'
 import type { SessionId } from '@deepseek-ai/dsh-session'
 import type { SessionInspection } from '@deepseek-ai/dsh-session-persistence'
@@ -19,11 +20,7 @@ import { SessionCommandController } from './commands.ts'
 import { SessionControlController } from './control.ts'
 import { SessionHistoryController } from './history.ts'
 import { SessionFileReferences } from './file-references.ts'
-import {
-  ApiSessionList,
-  DEFAULT_COLD_BLANK_PROBE_MAX_BYTES,
-  DEFAULT_COLD_BLANK_PROBE_MAX_EVENTS,
-} from './list.ts'
+import { ApiSessionList } from './list.ts'
 import {
   buildModelCatalog,
   DEFAULT_MODEL_CATALOG_PROVIDER_TIMEOUT_MS,
@@ -76,10 +73,6 @@ declare module '@deepseek-ai/cordis' {
 
 /** Session Controller deployment policy. */
 export interface Config {
-  /** Maximum stat-reported event count eligible for one full cold projection observation; `0` disables the event-count gate. */
-  readonly coldBlankProbeMaxEvents?: number
-  /** Maximum stat-reported artifact byte size eligible for one full cold projection observation; `0` disables the byte-size gate. */
-  readonly coldBlankProbeMaxBytes?: number
   /** Deadline for one provider's advisory model-catalog read; zero disables it. */
   readonly modelCatalogProviderTimeoutMs?: number
   /** Override platform desktop-opener detection. */
@@ -100,6 +93,7 @@ export class SessionController extends TypertRemoteService {
     'agentDefaultModel',
     'agents',
     'attachments',
+    'fileUploads',
     'llm',
     'sessions',
     'sessionProjections',
@@ -109,8 +103,6 @@ export class SessionController extends TypertRemoteService {
   ]
 
   static Config: z<Config> = z.object({
-    coldBlankProbeMaxEvents: z.natural().default(DEFAULT_COLD_BLANK_PROBE_MAX_EVENTS),
-    coldBlankProbeMaxBytes: z.natural().default(DEFAULT_COLD_BLANK_PROBE_MAX_BYTES),
     modelCatalogProviderTimeoutMs: z.natural().default(DEFAULT_MODEL_CATALOG_PROVIDER_TIMEOUT_MS),
     nativeOpen: z.boolean(),
   })
@@ -127,7 +119,7 @@ export class SessionController extends TypertRemoteService {
 
   /**
    * @param ctx - Host context containing the Session capability assembly.
-   * @param config - cold-list observation and native-opener deployment policy.
+   * @param config - native-opener deployment policy.
    * @param internals - host integrations replaceable by direct unit tests.
    */
   constructor(ctx: Context, config: Config, internals: SessionControllerInternals = {}) {
@@ -135,6 +127,11 @@ export class SessionController extends TypertRemoteService {
     installModelSelectionProjection(ctx)
     this.agents = new ApiSessionAgentController(ctx)
     this.commands = new SessionCommandController(ctx, this.agents, process.cwd())
+    ctx.effect(() => ctx.fileUploads.registerAgentResolver(async (sessionId) => {
+      const result = await this.agents.resolveAgent(sessionId)
+      if ('error' in result) throw result.error
+      return result.agent
+    }), 'session-controller: file-upload Agent resolver')
     this.controlState = new SessionControlController(ctx)
     // Registered before history so reverse-order teardown closes every
     // follower before waiting for already-admitted promotions.
@@ -142,10 +139,7 @@ export class SessionController extends TypertRemoteService {
       await Promise.allSettled([...this.promotions])
     }, 'session-controller.promotions')
     this.history = new SessionHistoryController(ctx, (observation) => { this.promote(observation) })
-    this.listState = new ApiSessionList(ctx, {
-      coldBlankProbeMaxEvents: config.coldBlankProbeMaxEvents ?? DEFAULT_COLD_BLANK_PROBE_MAX_EVENTS,
-      coldBlankProbeMaxBytes: config.coldBlankProbeMaxBytes ?? DEFAULT_COLD_BLANK_PROBE_MAX_BYTES,
-    })
+    this.listState = new ApiSessionList(ctx)
     this.modelCatalogState = new ModelCatalogCache(
       ctx,
       config.modelCatalogProviderTimeoutMs ?? DEFAULT_MODEL_CATALOG_PROVIDER_TIMEOUT_MS,
@@ -399,7 +393,8 @@ export class SessionController extends TypertRemoteService {
    * Follow one Session log from its opening or resume cursor.
    * @param request - durable address and last committed sequence already held by the caller.
    * @param signal - cancellation owned by the Remote stream carrier.
-   * @returns a complete opening snapshot followed by gap-free event frames.
+   * @returns a complete opening snapshot followed by gap-free durable event
+   *   frames and optional cursorless assistant-stream frames.
    */
   @Remote({ mode: 'stream' })
   follow(request: SessionFollowRequest, signal: AbortSignal): AsyncIterable<SessionFollowFrame> {
