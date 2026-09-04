@@ -1,4 +1,5 @@
 import { createSessionFormatChain } from './chain.ts'
+import { unionSessionFormatEventTypes } from './vocabulary.ts'
 import { SessionFormatError, SessionFormatUnsupportedMigrationError } from './error.ts'
 import {
   inspectSessionFormatVersion,
@@ -9,6 +10,7 @@ import {
 } from './json.ts'
 import type {
   EncodedSessionFormatArtifact,
+  SessionFormatArtifact,
   SessionFormatCatalog,
   SessionFormatCatalogOptions,
   SessionFormatCodec,
@@ -102,18 +104,26 @@ export function createSessionFormatCatalog(options: SessionFormatCatalogOptions)
     return { storedVersion, codec }
   }
 
-  function decodeArtifact(headerValue: unknown, rowValues: readonly unknown[]) {
+  function decodeArtifact(headerValue: unknown, rowValues: readonly unknown[], additionalEventTypes?: ReadonlySet<string>) {
     const { storedVersion, codec } = artifactCodec(headerValue)
     return snapshotSessionFormatArtifact(
-      codec.decodeArtifact(headerValue, rowValues, options.installedEventTypes),
+      codec.decodeArtifact(
+        headerValue,
+        rowValues,
+        unionSessionFormatEventTypes(options.installedEventTypes, additionalEventTypes),
+      ),
       `format v${storedVersion} decoded artifact`,
     )
   }
 
-  function decodeRecoverableArtifact(headerValue: unknown, rowValues: readonly unknown[]) {
+  function decodeRecoverableArtifact(headerValue: unknown, rowValues: readonly unknown[], additionalEventTypes?: ReadonlySet<string>) {
     const { storedVersion, codec } = artifactCodec(headerValue)
     return snapshotSessionFormatArtifact(
-      codec.decodeRecoverableArtifact(headerValue, rowValues, options.installedEventTypes),
+      codec.decodeRecoverableArtifact(
+        headerValue,
+        rowValues,
+        unionSessionFormatEventTypes(options.installedEventTypes, additionalEventTypes),
+      ),
       `format v${storedVersion} recoverable artifact`,
     )
   }
@@ -139,7 +149,8 @@ export function createSessionFormatCatalog(options: SessionFormatCatalogOptions)
     readHeader,
     decodeArtifact,
     decodeRecoverableArtifact,
-    migrate: chain.migrate.bind(chain),
+    migrate: (artifact: SessionFormatArtifact, additionalEventTypes?: ReadonlySet<string>) =>
+      chain.migrate(artifact, unionSessionFormatEventTypes(options.installedEventTypes, additionalEventTypes)),
     encodeCurrent,
   })
 }

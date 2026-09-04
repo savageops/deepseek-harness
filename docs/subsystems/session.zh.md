@@ -871,6 +871,12 @@ register(typeOrTypes: string | readonly string[], owner?: string): () => void
  * @returns true when an active owner has registered the type.
  */
 has(type: string): boolean
+
+/**
+ * Snapshot the external event types registered by active owners.
+ * @returns the registered types in registration order; empty when none are registered.
+ */
+registeredEventTypes(): readonly string[]
 ```
 
 Source: [`packages/core/session/src/event-types.ts`](../../packages/core/session/src/event-types.ts)

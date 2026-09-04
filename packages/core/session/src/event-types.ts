@@ -82,6 +82,14 @@ export class SessionEventTypeRegistry {
   has(type: string): boolean {
     return this.registrations.has(type)
   }
+
+  /**
+   * Snapshot the external event types registered by active owners.
+   * @returns the registered types in registration order; empty when none are registered.
+   */
+  registeredEventTypes(): readonly string[] {
+    return [...this.registrations.keys()]
+  }
 }
 
 function normalizeEventType(type: unknown): string {

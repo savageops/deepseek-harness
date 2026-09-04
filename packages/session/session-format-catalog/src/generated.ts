@@ -4,7 +4,7 @@
  */
 
 import { KNOWN_SESSION_EVENT_TYPES } from '@deepseek-ai/dsh-session'
-import { createSessionFormatCatalog } from '@deepseek-ai/dsh-session-format'
+import { createSessionFormatCatalog, unionSessionFormatEventTypes } from '@deepseek-ai/dsh-session-format'
 import { validateInstalledCurrentSessionArtifact, validateInstalledCurrentSessionHeader } from './current.ts'
 import { createSessionFormatV0ToV1, releasedV0SessionFormatCodec, releasedV1SessionFormatCodec } from '@deepseek-ai/dsh-session-format-v0-to-v1'
 import { assertReleasedV2Header, createSessionFormatV1ToV2, releasedV2SessionFormatCodec, restoreReleasedV2Artifact } from '@deepseek-ai/dsh-session-format-v1-to-v2'
@@ -16,8 +16,11 @@ export const sessionFormatCatalog = createSessionFormatCatalog({
   encodeCurrentArtifact: artifact => releasedV2SessionFormatCodec.encodeArtifact(artifact),
   migrations: [createSessionFormatV0ToV1(KNOWN_SESSION_EVENT_TYPES), createSessionFormatV1ToV2(KNOWN_SESSION_EVENT_TYPES)],
   installedEventTypes: KNOWN_SESSION_EVENT_TYPES,
-  restoreCurrent(artifact) {
-    const restored = restoreReleasedV2Artifact(artifact, KNOWN_SESSION_EVENT_TYPES)
+  restoreCurrent(artifact, installedEventTypes) {
+    const restored = restoreReleasedV2Artifact(
+      artifact,
+      unionSessionFormatEventTypes(KNOWN_SESSION_EVENT_TYPES, installedEventTypes) ?? KNOWN_SESSION_EVENT_TYPES,
+    )
     validateInstalledCurrentSessionArtifact(restored)
     return restored
   },

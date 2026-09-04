@@ -92,4 +92,27 @@ describe('first-party Session format catalog', () => {
       type: 'ordinary/not-installed-anywhere', seq: 0, time: 2, data: null,
     }])).toThrow(/migration refuses unknown historical events even when ignorable/)
   })
+
+  it('admits mounted-plugin event types supplied at call time and still refuses strangers', () => {
+    const header = {
+      type: 'session',
+      version: 0,
+      id: 'mounted-plugin',
+      createdAt: 1,
+      seedLength: 0,
+      delegationDepth: 0,
+    }
+    const dynamic = new Set(['tracking/write'])
+    const registered = sessionFormatCatalog.decodeArtifact(header, [
+      { type: 'tracking/write', seq: 0, time: 2, data: { kind: 'checkpoint' } },
+    ], dynamic)
+    const migrated = sessionFormatCatalog.migrate(registered, dynamic)
+    expect(migrated.events).toEqual([{
+      type: 'session/end-seed', seq: 0, time: 2, data: { inherited: true },
+    }, {
+      type: 'tracking/write', seq: 1, time: 2, data: { kind: 'checkpoint' },
+    }])
+
+    expect(() => sessionFormatCatalog.migrate(registered)).toThrow(/unknown historical event type/)
+  })
 })

@@ -85,18 +85,21 @@ class CompiledSessionFormatChain implements SessionFormatChain {
     return Object.freeze(this.migrations.slice(from))
   }
 
-  migrate(source: SessionFormatArtifact): SessionFormatArtifact {
+  migrate(source: SessionFormatArtifact, installedEventTypes?: ReadonlySet<string>): SessionFormatArtifact {
     const storedVersion = inspectSessionFormatVersion(source.header)
     let current = snapshotSessionFormatArtifact(source, `format v${storedVersion} source`)
     if (storedVersion === this.currentVersion) {
-      current = snapshotSessionFormatArtifact(this.restoreCurrent(current), 'current Session restoration')
+      current = snapshotSessionFormatArtifact(this.restoreCurrent(current, installedEventTypes), 'current Session restoration')
       this.assertCurrent(current)
       return current
     }
     for (const migration of this.plan(storedVersion)) {
       let migrated: SessionFormatArtifact
       try {
-        migrated = migration.migrate(snapshotSessionFormatArtifact(current, `${migration.name} input`))
+        migrated = migration.migrate(
+          snapshotSessionFormatArtifact(current, `${migration.name} input`),
+          installedEventTypes,
+        )
       } catch (error: unknown) {
         throwUnsupportedRefusal(migration, error)
       }
@@ -105,12 +108,12 @@ class CompiledSessionFormatChain implements SessionFormatChain {
         throw new SessionFormatError(`${migration.name} returned v${current.header.version}; expected v${migration.toVersion}`)
       }
       try {
-        migration.validateTarget(current)
+        migration.validateTarget(current, installedEventTypes)
       } catch (error: unknown) {
         throwUnsupportedRefusal(migration, error)
       }
     }
-    current = snapshotSessionFormatArtifact(this.restoreCurrent(current), 'current Session restoration')
+    current = snapshotSessionFormatArtifact(this.restoreCurrent(current, installedEventTypes), 'current Session restoration')
     this.assertCurrent(current)
     return current
   }

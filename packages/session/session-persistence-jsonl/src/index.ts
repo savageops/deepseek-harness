@@ -166,6 +166,16 @@ class JsonlSessionPersistence extends SessionPersistence {
    */
   private readonly coldLogMemo = new Map<SessionId, StoredLog>()
 
+  /**
+   * Vocabulary the mounted plugins registered beyond the static catalog set,
+   * looked up per read so a late-provided registry is still honored.
+   * @returns a detached set, or undefined when no registry is mounted or nothing is registered.
+   */
+  private dynamicEventTypes(): ReadonlySet<string> | undefined {
+    const registered = this.ctx.get('sessionEventTypes')?.registeredEventTypes() ?? []
+    return registered.length === 0 ? undefined : new Set(registered)
+  }
+
   constructor(ctx: Context, public config: Config) {
     super(ctx)
     /* v8 ignore next 5 -- generated catalog and Session source share one build-time version owner. */
@@ -181,13 +191,15 @@ class JsonlSessionPersistence extends SessionPersistence {
     this.generationFormat = {
       currentVersion: sessionFormatCatalog.currentVersion,
       migrate: (source) => {
-        const decoded = sessionFormatCatalog.decodeRecoverableArtifact(source.header, source.rows)
-        const current = sessionFormatCatalog.migrate(decoded)
+        const dynamic = this.dynamicEventTypes()
+        const decoded = sessionFormatCatalog.decodeRecoverableArtifact(source.header, source.rows, dynamic)
+        const current = sessionFormatCatalog.migrate(decoded, dynamic)
         return sessionFormatCatalog.encodeCurrent(current)
       },
       validateCurrent: (candidate) => {
-        const decoded = sessionFormatCatalog.decodeArtifact(candidate.header, candidate.rows)
-        sessionFormatCatalog.migrate(decoded)
+        const dynamic = this.dynamicEventTypes()
+        const decoded = sessionFormatCatalog.decodeArtifact(candidate.header, candidate.rows, dynamic)
+        sessionFormatCatalog.migrate(decoded, dynamic)
       },
       isUnsupportedMigrationError: (error): error is SessionFormatUnsupportedMigrationError =>
         error instanceof SessionFormatUnsupportedMigrationError,

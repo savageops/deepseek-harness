@@ -1562,6 +1562,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         parameters: [{ name: 'type', description: 'event type to test.' }],
         returns: 'true when an active owner has registered the type.',
       },
+      {
+        signature: 'registeredEventTypes(): readonly string[]',
+        description: 'Snapshot the external event types registered by active owners.',
+        parameters: [],
+        returns: 'the registered types in registration order; empty when none are registered.',
+      },
     ],
   },
   {

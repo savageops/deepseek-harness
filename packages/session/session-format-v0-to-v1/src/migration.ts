@@ -4,6 +4,7 @@ import {
   defineSessionFormatMigration,
   sessionFormatCount,
   snapshotSessionFormatArtifact,
+  unionSessionFormatEventTypes,
 } from '@deepseek-ai/dsh-session-format'
 import type {
   SessionFormatEvent,
@@ -38,19 +39,21 @@ export function createSessionFormatV0ToV1(installedEventTypes?: ReadonlySet<stri
       assertHeaderVersion(header, 0)
       return { ...header, version: 1 }
     },
-    migrate(source) {
-      assertReleasedV0SourceArtifact(source, installedEventTypes)
-      const events = normalizeReleasedV0Events(source.events, source.header.id, installedEventTypes)
-      assertNormalizedReleasedV0Artifact({ ...source, events }, installedEventTypes)
+    migrate(source, callEventTypes) {
+      const installed = unionSessionFormatEventTypes(installedEventTypes, callEventTypes)
+      assertReleasedV0SourceArtifact(source, installed)
+      const events = normalizeReleasedV0Events(source.events, source.header.id, installed)
+      assertNormalizedReleasedV0Artifact({ ...source, events }, installed)
       const target = snapshotSessionFormatArtifact({
         header: { ...source.header, version: 1 },
         inheritedEventCount: source.inheritedEventCount,
         events,
       }, 'released v0-to-v1 target')
-      assertReleasedV1Artifact(target, installedEventTypes)
+      assertReleasedV1Artifact(target, installed)
       return target
     },
-    validateTarget: artifact => assertReleasedV1Artifact(artifact, installedEventTypes),
+    validateTarget: (artifact, callEventTypes) =>
+      assertReleasedV1Artifact(artifact, unionSessionFormatEventTypes(installedEventTypes, callEventTypes)),
     validateTargetHeader: assertReleasedV1Header,
   })
 }

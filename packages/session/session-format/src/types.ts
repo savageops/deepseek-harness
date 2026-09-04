@@ -48,10 +48,15 @@ export interface SessionFormatMigration {
   readonly toVersion: number
   /** Convert one header without reading event bodies. */
   migrateHeader(header: SessionFormatHeader): SessionFormatHeader
-  /** Convert one detached complete artifact to exactly {@link toVersion}. */
-  migrate(artifact: SessionFormatArtifact): SessionFormatArtifact
+  /**
+   * Convert one detached complete artifact to exactly {@link toVersion}.
+   * @param artifact - detached complete source artifact.
+   * @param installedEventTypes - call-time vocabulary, unioned with the declaring factory's set;
+   * installed-only types migrate as opaque pass-through records.
+   */
+  migrate(artifact: SessionFormatArtifact, installedEventTypes?: ReadonlySet<string>): SessionFormatArtifact
   /** Refuse any artifact that the adjacent target writer cannot emit. */
-  validateTarget(artifact: SessionFormatArtifact): void
+  validateTarget(artifact: SessionFormatArtifact, installedEventTypes?: ReadonlySet<string>): void
   /** Refuse any header that the adjacent target writer cannot emit. */
   validateTargetHeader(header: SessionFormatHeader): void
 }
@@ -61,7 +66,7 @@ export interface SessionFormatChainOptions {
   readonly currentVersion: number
   readonly migrations: readonly SessionFormatMigration[]
   /** Restore and validate a detached current artifact through the current parser. */
-  readonly restoreCurrent: (artifact: SessionFormatArtifact) => SessionFormatArtifact
+  readonly restoreCurrent: (artifact: SessionFormatArtifact, installedEventTypes?: ReadonlySet<string>) => SessionFormatArtifact
   /** Restore and validate a detached current header without reading event bodies. */
   readonly restoreCurrentHeader: (header: SessionFormatHeader) => SessionFormatHeader
 }
@@ -72,7 +77,7 @@ export interface SessionFormatChain {
   /** Return the complete ordered plan from one supported stored version. */
   plan(fromVersion: number): readonly SessionFormatMigration[]
   /** Restore current input directly or migrate old input entirely in memory. */
-  migrate(artifact: SessionFormatArtifact): SessionFormatArtifact
+  migrate(artifact: SessionFormatArtifact, installedEventTypes?: ReadonlySet<string>): SessionFormatArtifact
   /** Convert only a supported header to the current logical representation. */
   migrateHeader(header: SessionFormatHeader): SessionFormatHeader
 }
@@ -139,15 +144,19 @@ export interface SessionFormatCatalog {
   readonly currentVersion: number
   /** Classify and translate one header without reading event rows. */
   readHeader(headerValue: unknown): SessionFormatHeaderReadResult
-  /** Dispatch a complete physical JSON artifact through its frozen version codec. */
-  decodeArtifact(headerValue: unknown, rowValues: readonly unknown[]): SessionFormatArtifact
+  /**
+   * Dispatch a complete physical JSON artifact through its frozen version codec.
+   * @param additionalEventTypes - call-time installed vocabulary unioned with the catalog's own.
+   */
+  decodeArtifact(headerValue: unknown, rowValues: readonly unknown[], additionalEventTypes?: ReadonlySet<string>): SessionFormatArtifact
   /** Dispatch a physical artifact through its released row-prefix recovery rules. */
   decodeRecoverableArtifact(
     headerValue: unknown,
     rowValues: readonly unknown[],
+    additionalEventTypes?: ReadonlySet<string>,
   ): SessionFormatArtifact
   /** Restore current input directly or run all required adjacent migrations in memory. */
-  migrate(artifact: SessionFormatArtifact): SessionFormatArtifact
+  migrate(artifact: SessionFormatArtifact, installedEventTypes?: ReadonlySet<string>): SessionFormatArtifact
   /** Encode one current artifact that `migrate` returned or a live Session produced; it is not re-validated here. */
   encodeCurrent(artifact: SessionFormatArtifact): EncodedSessionFormatArtifact
 }

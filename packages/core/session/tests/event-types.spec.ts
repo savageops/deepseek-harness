@@ -15,6 +15,18 @@ describe('SessionEventTypeRegistry', () => {
     dispose()
     expect(registry.has('fixture/one')).toBe(false)
     expect(registry.has('fixture/two')).toBe(false)
+    expect(registry.registeredEventTypes()).toEqual([])
+  })
+
+  it('snapshots the registered types in registration order', () => {
+    const registry = new SessionEventTypeRegistry()
+    const disposeA = registry.register('fixture/alpha', 'owner-a')
+    const disposeB = registry.register(['fixture/beta', 'fixture/gamma'], 'owner-b')
+    expect(registry.registeredEventTypes()).toEqual(['fixture/alpha', 'fixture/beta', 'fixture/gamma'])
+
+    disposeA()
+    expect(registry.registeredEventTypes()).toEqual(['fixture/beta', 'fixture/gamma'])
+    disposeB()
   })
 
   it('validates names, protects first-party names, and keeps failed batches atomic', () => {

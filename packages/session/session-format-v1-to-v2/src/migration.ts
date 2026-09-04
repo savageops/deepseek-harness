@@ -3,6 +3,7 @@ import {
   SessionFormatUnsupportedMigrationError,
   defineSessionFormatMigration,
   snapshotSessionFormatArtifact,
+  unionSessionFormatEventTypes,
 } from '@deepseek-ai/dsh-session-format'
 import type {
   SessionFormatArtifact,
@@ -47,11 +48,12 @@ export function createSessionFormatV1ToV2(installedEventTypes?: ReadonlySet<stri
       assertReleasedV1Header(header)
       return { ...header, version: 2 }
     },
-    migrate(source) {
-      assertReleasedV1Artifact(source, installedEventTypes)
+    migrate(source, callEventTypes) {
+      const installed = unionSessionFormatEventTypes(installedEventTypes, callEventTypes)
+      assertReleasedV1Artifact(source, installed)
       const unknown = source.events.find(event =>
         RELEASED_V0_EVENT_DISPOSITIONS[event.type] === undefined
-        && installedEventTypes?.has(event.type) !== true)
+        && installed?.has(event.type) !== true)
       if (unknown !== undefined) {
         throw refusal(`format v1 contains unknown event type ${JSON.stringify(unknown.type)} at seq ${unknown.seq}`)
       }
@@ -113,10 +115,11 @@ export function createSessionFormatV1ToV2(installedEventTypes?: ReadonlySet<stri
         inheritedEventCount,
         events: staged.map(({ event }, seq) => remapReferences(event, seq, oldToNew)),
       }, 'released v1-to-v2 target')
-      assertReleasedV2Artifact(target, installedEventTypes)
+      assertReleasedV2Artifact(target, installed)
       return target
     },
-    validateTarget: artifact => assertReleasedV2Artifact(artifact, installedEventTypes),
+    validateTarget: (artifact, callEventTypes) =>
+      assertReleasedV2Artifact(artifact, unionSessionFormatEventTypes(installedEventTypes, callEventTypes)),
     validateTargetHeader: assertReleasedV2Header,
   })
 }
