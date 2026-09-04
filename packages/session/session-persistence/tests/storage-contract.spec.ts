@@ -118,6 +118,19 @@ describe('validateStoredEvents', () => {
     expect(validateStoredEvents(m, events)).toBe(events)
   })
 
+  it('adopts a registered external event type while refusing strangers', () => {
+    const m = meta('registered-type')
+    const events = [
+      { type: 'tracking/write', seq: 0, time: 1, data: { kind: 'checkpoint' } },
+      { type: 'mystery/event', seq: 1, time: 2, data: {} },
+    ] as unknown as SessionEvent[]
+    expect(() => validateStoredEvents(m, events)).toThrow(/unknown to this harness/)
+    const registered = new Set(['tracking/write'])
+    expect(() => validateStoredEvents(m, events, undefined, registered)).toThrow(/mystery\/event/)
+    const admitted = [{ type: 'tracking/write', seq: 0, time: 1, data: {} }] as unknown as SessionEvent[]
+    expect(validateStoredEvents(m, admitted, undefined, registered)).toBe(admitted)
+  })
+
   it('refuses an unknown event type before adopting anything', () => {
     const m = meta('unknown-type')
     const events = [

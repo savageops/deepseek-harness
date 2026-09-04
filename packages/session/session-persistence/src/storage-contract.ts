@@ -55,13 +55,15 @@ export function assertVersion(
 /**
  * Validate one exclusively owned stored event array in place: adopt each
  * record (validating and freezing it) and refuse any event type this build
- * does not know, unless its writer marked it `ignorable: true` — silently
+ * does not know, unless its writer marked it `ignorable: true` or an active
+ * plugin registered the type through `ctx.sessionEventTypes` — silently
  * skipping an unknown required event could reconstruct a wrong session (the
  * envelope contract on `SessionEvent.ignorable`). Both newer vocabularies and
  * retired pre-release shapes refuse here; this build ships no migration.
  * @param meta - the stored header the events belong to.
  * @param events - exclusively owned decoded events; validated in place.
  * @param location - the backend's artifact location for refusals, when one exists.
+ * @param registeredEventTypes - externally registered event types admitted beyond the static vocabulary.
  * @returns the same array, validated and frozen.
  * @throws {SessionFormatUnsupportedError} for unknown event types.
  * @throws {SessionPersistenceCorruptionError} for records that fail validation.
@@ -70,9 +72,12 @@ export function validateStoredEvents(
   meta: SessionHeader,
   events: SessionEvent[],
   location?: SessionLocation,
+  registeredEventTypes?: ReadonlySet<string>,
 ): SessionEvent[] {
   for (const event of events) {
-    if (!KNOWN_SESSION_EVENT_TYPES.has(event.type) && event.ignorable !== true) {
+    if (!KNOWN_SESSION_EVENT_TYPES.has(event.type)
+      && registeredEventTypes?.has(event.type) !== true
+      && event.ignorable !== true) {
       throw unsupported(
         `session "${meta.id}" contains event type "${event.type}" (seq ${event.seq}) unknown to this harness and not marked ignorable; refusing to interpret the log — it was likely written by a newer harness`,
         location,

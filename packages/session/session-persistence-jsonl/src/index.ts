@@ -538,7 +538,7 @@ class JsonlSessionPersistence extends SessionPersistence {
     signal?.throwIfAborted()
     assertStoredId(expectedId, parsed.meta)
     const location = this.locate(parsed.meta)
-    validateStoredEvents(parsed.meta, parsed.events, location)
+    validateStoredEvents(parsed.meta, parsed.events, location, this.dynamicEventTypes())
     const stored: StoredLog = { ...parsed, revision }
     this.coldLogMemo.delete(expectedId)
     this.coldLogMemo.set(expectedId, stored)
