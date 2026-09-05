@@ -346,6 +346,10 @@ describe('released event and payload inventory', () => {
       { kind: 'plugin', plugin: 'notice', form: 'notice', summary: 'notice' },
       { kind: 'plugin', plugin: 'relay', form: 'relay' },
       { kind: 'plugin', plugin: 'recall', form: 'recall' },
+      { kind: 'plugin', plugin: 'dsh-rich-tracking', form: 'steer', summary: 'pursue row 3' },
+      { kind: 'plugin', plugin: 'dsh-rich-tracking', form: 'followup' },
+      // Plugin-authored splice insertions may predate the id/role envelope.
+      { kind: 'plugin', plugin: 'negative-ledger', form: 'notice', summary: 'repeat' },
       { kind: 'plugin', plugin: 'compact', compactionId: 'compact-1', sourceCommandId: 'command-1' },
       { kind: 'model', provider: 'mock', model: 'mock', replayState: { private: true } },
       { kind: 'tool', callId: 'call-1' },

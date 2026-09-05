@@ -24,7 +24,7 @@ export function assertReleasedPayloadSemantics(event: SessionFormatEvent, versio
       countValue(data['start'], `${label} start`)
       if (data['removedCount'] !== undefined) countValue(data['removedCount'], `${label} removedCount`)
       arrayValue(data['inserted'], `${label} inserted`, (value) => {
-        messageValue(value, `${label} inserted message`, version, 'user')
+        insertedMessageValue(value, `${label} inserted message`, version)
       })
       if (data['outcome'] !== undefined) literalValue(data['outcome'], ['canceled'], `${label} outcome`)
       return
@@ -502,6 +502,20 @@ function messageValue(
   }
 }
 
+/** Plugin-authored inserted message: content and source are required; a writer
+ * that predates the id/role envelope members may omit them. */
+function insertedMessageValue(
+  value: SessionFormatJsonValue | undefined,
+  label: string,
+  version: number,
+): void {
+  const message = releasedV0Record(value, label)
+  if (message['id'] !== undefined) nonEmptyString(message['id'], `${label} id`)
+  if (message['role'] !== undefined) literalValue(message['role'], ['user'], `${label} role`)
+  contentBlocksValue(message['content'], `${label} content`, version)
+  messageSourceValue(message['source'], `${label} source`, version, 'user')
+}
+
 function messageSourceValue(
   value: SessionFormatJsonValue | undefined,
   label: string,
@@ -606,7 +620,14 @@ function pluginSourceValue(source: JsonRecord, label: string): void {
   }
   const form = source['form']
   if (form === undefined) return
-  literalValue(form, ['instructions', 'catalog', 'snapshot', 'notice', 'relay', 'recall'], `${label} form`)
+  // A plugin owns its form vocabulary: values beyond the released forms are
+  // the installed reader's documented opaque default, so only the released
+  // forms' structural requirements are enforced here.
+  if (form !== 'instructions' && form !== 'catalog' && form !== 'snapshot'
+    && form !== 'notice' && form !== 'relay' && form !== 'recall') {
+    stringValue(form, `${label} form`)
+    return
+  }
   if (form === 'snapshot') {
     arrayValue(source['sections'], `${label} sections`, (member, memberLabel) => {
       const section = exactRecord(member, memberLabel, ['name', 'text'])
